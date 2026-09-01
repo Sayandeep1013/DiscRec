@@ -2,34 +2,45 @@
 
 Checked on the primary development machine (Windows 11), 1 Sept 2026.
 
-## Present
+## Installed — Phase 0 is complete
 
-| Tool | Version |
-|---|---|
-| git | 2.51.0 |
-| gh | 2.97.0 |
-| Node | 22.19.0 |
-| Python | 3.12.1 |
+Everything lives on `D:`. Nothing was installed to `C:`.
 
-Node and Python are not needed by the product — they were used for research and
-tooling. The shipped binary has no runtime dependency (R12).
-
-## Needed for Phase 0
-
-| Tool | Why | How |
+| Tool | Version | Location |
 |---|---|---|
-| **Rust + cargo** | The entire application | `winget install Rustlang.Rustup` |
-| **MSVC build tools + Windows SDK** | Rust's MSVC target, and the WASAPI headers | Visual Studio Build Tools, "Desktop development with C++" |
+| **Rust** | 1.98.0 `x86_64-pc-windows-gnu` | `D:ustustup` |
+| **cargo** | 1.98.0 | `D:ust\cargo` |
+| clippy / rustfmt | 0.1.98 / 1.9.0 | ” |
+| ffmpeg | 7.1.1 | `D:fmpeg\...in` (pre-existing, added to PATH) |
+| git | 2.51.0 | pre-existing |
+| gh | 2.97.0 | pre-existing |
 
-Neither is currently installed. Together they are the only thing between here
-and Phase 1.
+Environment (user scope): `CARGO_HOME=D:ust\cargo`,
+`RUSTUP_HOME=D:ustustup`; `D:ust\cargoin` and the ffmpeg `bin` on
+PATH. Build artifacts go to the project-local `target/`. Total Rust footprint
+0.88 GB.
 
-## Needed later
+**No Visual Studio, no Windows SDK.** The GNU toolchain is self-contained and
+the `windows` crate generates its bindings from Windows metadata rather than SDK
+headers. Reasoning and risks: [ADR-0009](adr/0009-gnu-toolchain-no-visual-studio.md).
+
+Verified working:
+
+```
+cargo build              clean
+cargo clippy -D warnings clean
+cargo fmt --check        clean
+cargo run                runs
+```
+
+Node and Python are present but are not product dependencies — they were used
+for research. The shipped binary has no runtime dependency (R12).
+
+## Still useful later
 
 | Tool | Phase | Why |
 |---|---|---|
-| ffmpeg | Testing | Generating sync-tone fixtures and verifying output |
-| Audacity or similar | Phase 2 | Visual confirmation of drift in the soak test |
+| Audacity | Phase 2 | Visual confirmation of drift in the soak test. Already at `D:udacity` |
 
 ## Cannot be done on this machine
 

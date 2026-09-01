@@ -18,3 +18,4 @@ the codebase.
 | [0006](0006-mobile-out-of-scope.md) | Mobile is out of scope entirely | Accepted |
 | [0007](0007-cross-platform-strategy.md) | What is shared vs duplicated across Windows/macOS | Proposed — now central |
 | [0008](0008-manual-control.md) | Manual control, no auto-start | **Accepted** — supersedes 0001 |
+| [0009](0009-gnu-toolchain-no-visual-studio.md) | GNU toolchain on Windows, no Visual Studio | Accepted |

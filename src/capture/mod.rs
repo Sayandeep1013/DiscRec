@@ -5,6 +5,10 @@
 //!
 //! See `docs/spec/capture-interface.md` for the contract a backend must honor.
 
+// Scaffolding: the trait and its types are defined ahead of the code that
+// drives them. Remove this once Phase 1 wires capture into the recorder.
+#![allow(dead_code)]
+
 #[cfg(windows)]
 pub mod windows;
 
@@ -43,7 +47,9 @@ pub struct StreamFormat {
 #[derive(Debug)]
 pub enum CaptureError {
     /// OS predates per-process audio capture.
-    UnsupportedOs { needs: &'static str },
+    UnsupportedOs {
+        needs: &'static str,
+    },
     /// macOS TCC, or equivalent, refused.
     PermissionDenied,
     /// Stream opened but delivered digital silence. Never write this as a

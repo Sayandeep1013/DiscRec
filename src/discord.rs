@@ -3,6 +3,9 @@
 //! Not "detect that a call started" — auto-start was removed
 //! (`docs/adr/0008-manual-control.md`). This is a process lookup.
 
+// Scaffolding until Phase 1 implements process enumeration.
+#![allow(dead_code)]
+
 /// Executable names to look for, in preference order.
 #[cfg(windows)]
 pub const DISCORD_PROCESSES: &[&str] = &["Discord.exe", "DiscordCanary.exe", "DiscordPTB.exe"];

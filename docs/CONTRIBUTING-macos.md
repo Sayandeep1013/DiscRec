@@ -18,6 +18,10 @@ No fork, no separate branch, no parallel build. Clone, build, implement, push.
 | **Discord** | Any client. Have a friend on a call, or a second account, to make real audio |
 | Apple Developer account (~$99/yr) | **Only for distribution.** Not needed to build or test locally. Ignore until it matters |
 
+Nothing else. The Windows side uses Rust's GNU toolchain to avoid Visual Studio
+([ADR-0009](adr/0009-gnu-toolchain-no-visual-studio.md)); that decision does not
+affect you at all — macOS builds with clang from the Command Line Tools.
+
 ## Getting started
 
 ```bash
