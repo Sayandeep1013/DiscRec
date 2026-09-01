@@ -11,7 +11,7 @@
 //!    recordings less useful, so the audio stands alone.
 
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::Write;
 use std::path::Path;
 
 use ogg::writing::{PacketWriteEndInfo, PacketWriter};
@@ -33,7 +33,7 @@ const BITRATE: i32 = 96_000;
 
 pub struct OpusWriter {
     encoder: Encoder,
-    packets: PacketWriter<'static, BufWriter<File>>,
+    packets: PacketWriter<'static, File>,
     channels: usize,
     serial: u32,
     /// Interleaved samples not yet forming a whole frame.
@@ -57,8 +57,13 @@ impl OpusWriter {
             .map_err(|e| std::io::Error::other(format!("opus encoder: {e}")))?;
         let _ = encoder.set_bitrate(opus::Bitrate::Bits(BITRATE));
 
-        let file = BufWriter::new(File::create(path)?);
-        let mut packets = PacketWriter::new(file);
+        // Deliberately unbuffered. A BufWriter would coalesce writes, but
+        // anything still sitting in it is lost when the process is killed --
+        // measured at up to ~1.3 s of audio. Handing each page straight to the
+        // OS means a kill can no longer lose data the encoder already
+        // produced, and ~50 small writes per second is far below the CPU
+        // budget (R11).
+        let mut packets = PacketWriter::new(File::create(path)?);
 
         // A fixed serial would collide if two recordings were ever muxed
         // together; derive one from the clock instead.
@@ -124,8 +129,7 @@ impl OpusWriter {
         self.packets_written += 1;
         self.bytes_written += n as u64;
 
-        // Flushed per page: bounded loss on a crash, and no syscall per 20 ms
-        // frame beyond what BufWriter already coalesces.
+        // The page is now with the OS, so a process kill cannot lose it.
         Ok(())
     }
 
@@ -145,7 +149,7 @@ impl OpusWriter {
 
         let mut inner = self.packets.into_inner();
         inner.flush()?;
-        inner.get_ref().sync_all()?;
+        inner.sync_all()?;
         Ok(())
     }
 }

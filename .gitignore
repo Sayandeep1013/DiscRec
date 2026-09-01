@@ -38,3 +38,6 @@ Thumbs.db
 
 # phase 1 spike artifacts
 *.wav
+
+# soak test working dir (large audio + telemetry)
+/soak/

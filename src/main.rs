@@ -239,6 +239,30 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
         }
     };
 
+    // Telemetry for the drift soak. A single figure at the end cannot
+    // distinguish a controller holding steady from one slowly losing ground,
+    // and "no monotonic trend" is the condition that actually gates R6.
+    let mut telemetry = if std::env::args().any(|a| a == "--log") {
+        match std::fs::File::create("soak.csv") {
+            Ok(mut f) => {
+                use std::io::Write;
+                let _ = writeln!(
+                    f,
+                    "elapsed_s,drift_ppm,buffered_frames,mic_underruns,mic_overruns,frames_out,limited"
+                );
+                println!("Telemetry    soak.csv, sampled every 30s\n");
+                Some(f)
+            }
+            Err(e) => {
+                eprintln!("Could not create soak.csv: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let mut next_sample = Duration::from_secs(30);
+
     let (mut remote_peak, mut local_peak) = (0.0f32, 0.0f32);
     let started = Instant::now();
 
@@ -257,6 +281,26 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
                         eprintln!("Write failed: {e}");
                         break;
                     }
+                }
+            }
+
+            if let Some(f) = telemetry.as_mut() {
+                let elapsed = started.elapsed();
+                if elapsed >= next_sample {
+                    use std::io::Write;
+                    let _ = writeln!(
+                        f,
+                        "{:.0},{:.1},{},{},{},{},{}",
+                        elapsed.as_secs_f64(),
+                        mixer.drift_ppm(),
+                        mixer.buffered_frames(),
+                        mixer.mic_underruns,
+                        mixer.mic_overruns,
+                        mixer.frames_out,
+                        mixer.limited
+                    );
+                    let _ = f.flush();
+                    next_sample += Duration::from_secs(30);
                 }
             }
         }

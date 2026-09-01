@@ -1,0 +1,4 @@
+elapsed_s,drift_ppm,buffered_frames,mic_underruns,mic_overruns,frames_out,limited
+30,-638.8,1499,3837,0,1443840,0
+60,234.4,2515,3837,0,2883360,0
+90,-278.5,1566,3837,0,4323840,0
