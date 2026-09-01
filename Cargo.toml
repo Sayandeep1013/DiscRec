@@ -7,10 +7,26 @@ description = "Records Discord's audio. Press record."
 license = "MIT"
 repository = "https://github.com/Sayandeep1013/DiscRec"
 
-# Dependencies are added per phase, deliberately.
-# Nothing here yet: the skeleton builds on std alone, so a fresh clone
-# compiles on both platforms before any backend exists.
 [dependencies]
+# Phase 1: raw PCM out to WAV. Pure Rust, no C dependency.
+hound = "3.5"
+
+[target.'cfg(windows)'.dependencies]
+# Bindings generated from Windows metadata, not SDK headers — this is what
+# lets the GNU toolchain reach the process-loopback APIs. See ADR-0009.
+windows-core = "0.62"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+    "Win32_System_Variant",
+]
 
 [profile.release]
 opt-level = "z"

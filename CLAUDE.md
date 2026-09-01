@@ -1,8 +1,13 @@
 # Working notes for DiscRec
 
+**Starting a fresh session? Read `docs/PROJECT-LOG.md` first.** It carries the
+context that is not recoverable from code or git history: why the scope changed
+three times, what was researched and rejected, and which conclusions were
+reversed.
+
 **What this is:** a small Windows/macOS app that captures Discord's audio when
 you press record. One binary, no background service, no bot, no configuration
-to speak of. Read `docs/01-overview.md` before proposing anything.
+to speak of.
 
 ## Settled — do not relitigate
 

@@ -35,3 +35,6 @@ Thumbs.db
 # rust
 /target/
 **/*.rs.bk
+
+# phase 1 spike artifacts
+*.wav

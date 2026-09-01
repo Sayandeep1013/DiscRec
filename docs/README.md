@@ -3,6 +3,11 @@
 Written Sept 2026. Platform API and library claims have a shelf life; see
 `research/` for what was checked and when.
 
+## Start here
+
+**[PROJECT-LOG.md](PROJECT-LOG.md)** — the running record of decisions,
+blockers, reversals and current state. Read first when picking this up cold.
+
 ## Understand it
 
 | Doc | Answers |

@@ -1,127 +1,119 @@
-# ADR-0007 — Cross-platform strategy: what is actually shared
+# ADR-0007 — Cross-platform strategy for the capture layer
 
-**Status: Proposed.** Date: 2026-09-01
+**Status: Accepted (native).** Date: 2026-09-01, resolved by the Phase 1 spike.
 
 ## Context
 
-Question raised: can this be one codebase for Windows and macOS rather than two,
-"Tauri-type"?
+The question raised was: can this be one codebase for Windows and macOS rather
+than two — "Tauri-type"?
 
-Worth answering precisely, because the assumption behind the question — that
-most of the work is platform-specific — is wrong, and because Tauri addresses a
-different layer than the one that is duplicated.
+Yes, and more of it is shared than the question assumes. But **Tauri addresses a
+different layer than the one that is actually duplicated.**
 
-## What is already shared
-
-With [ADR-0001](0001-primary-capture-route.md) landing on bot-primary, most of
-the product has no platform-specific code at all:
+## What is shared
 
 | Component | Platform-specific? |
 |---|---|
-| **Route A — the bot** | **No.** It is a network client. Runs identically on Windows, macOS, Linux, a Pi, or a VPS |
-| Timeline, gap fill, ordering | No |
-| Storage, Ogg writing, manifest | No |
-| Consent, opt-out, config, export, control API, diagnostics | No |
-| Join detection — gateway | No |
-| Join detection — RPC | Nearly. One named-pipe vs unix-socket path difference |
-| Tray icon | Thin, via a cross-platform tray crate |
-| **Route B — capture backend** | **Yes. This is the only genuinely duplicated part.** |
+| Process finder | Only the executable names |
+| Mixer, drift compensation, limiter | No |
+| Opus encoding, Ogg writing | No |
+| Window, meters, tray | Thin, via cross-platform crates |
+| **Capture backend** | **Yes — the only genuinely duplicated part** |
 
-So the duplicated surface is one module — the fallback capture path — behind the
-trait that [ADR-0003](0003-capture-abstraction.md) already defines for exactly
-this purpose.
+One module, behind the trait [ADR-0003](0003-capture-abstraction.md) defines for
+exactly this purpose. A macOS contributor writes `src/capture/macos.rs` and gets
+the rest of the application unchanged.
 
 ## On Tauri specifically
 
 Tauri unifies the **UI shell**. It does nothing for audio capture, which is the
-only part that is actually platform-specific here.
+only part that is platform-specific here.
 
-It remains a reasonable answer for the settings window — system webview, roughly
-10 MB, well within R9/R11 where Electron is not. But the shell was specced
-tray-first ([spec/desktop-shell.md](../spec/desktop-shell.md)), and a tray icon
-needs a small crate, not a webview framework. Tauri earns its place only if the
-settings window outgrows a menu.
+It remains reasonable if the settings window ever outgrows a menu — system
+webview, roughly 10 MB, well within R10/R12 where Electron is not. But the shell
+is specced tray-first ([spec/desktop-shell.md](../spec/desktop-shell.md)), and a
+tray icon needs a small crate, not a webview framework.
 
 **Tauri is not the answer to the cross-platform question**, because the hard
 part is below it.
 
-## Options for the capture layer
+## Options considered
 
-Three real ones, verified against released code on 2026-09-01.
+Verified against released code on 2026-09-01.
 
 ### Option A — `cpal` 0.18.2
 
-Mature, widely used, and it does have loopback on both platforms. **But it is
-system-wide, not per-process**, on both:
+Mature and widely used, with loopback on both platforms. **But system-wide, not
+per-process**, on both — verified by reading the source:
 
 - macOS (`src/host/coreaudio/macos/loopback.rs`, present in the v0.18.2 tag)
   calls `AudioHardwareCreateProcessTap` with an *empty* process list and
   `setExclusive(true)` — "exclude nothing", i.e. record everything.
 - Windows sets `AUDCLNT_STREAMFLAGS_LOOPBACK` on a render endpoint. There is no
-  `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` usage in the crate.
+  `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` usage anywhere in the crate.
 
-**One codepath, mature dependency, but R4 is lost** — your music, notifications
-and everything else land in the recording.
+One codepath, mature — but **R2 is lost**: music, games and notifications all
+land in the recording.
 
 ### Option B — `flexaudio` 0.2.0
 
-Rust core with Python and Node bindings, MIT. Its stated capability matrix is
-per-process capture on Windows (WASAPI process loopback), macOS (Core Audio
-process taps, 14.4+) and Linux (PipeWire), selected by a `target_pid` in the
-stream config. It uses cpal for microphone input and documents the macOS TCC
-gate including `NSAudioCaptureUsageDescription` and a `PermissionDenied` error.
+Rust core, MIT, claiming per-process capture on Windows, macOS and Linux via a
+`target_pid`. Almost exactly the `CaptureBackend` trait this project defined
+independently, already implemented for both targets.
 
-That is, almost exactly, the `CaptureBackend` trait this project defined
-independently — already implemented for both target platforms.
+**Too young to be load-bearing.** One crates.io release (0.2.0, 4 July 2026),
+~448 downloads, 5 stars, effectively one maintainer, with a 0.3.0 sitting
+unpublished in the repository.
 
-**Risk: it is very young.** One release on crates.io (0.2.0, 4 July 2026), ~448
-downloads, 5 stars, effectively one maintainer; a 0.3.0 exists in the repository
-but is unpublished. This would be a load-bearing dependency on the capture path.
+### Option C — native per-OS
 
-Mitigations: it is MIT and small, so it can be vendored or forked; and
-[ADR-0003](0003-capture-abstraction.md)'s trait means replacing it touches one
-module.
-
-### Option C — native per-OS, as currently specced
-
-Two implementations behind the trait
-([capture-windows.md](../spec/capture-windows.md),
-[capture-macos.md](../spec/capture-macos.md)). Most control, no dependency risk,
-most work — and the macOS half cannot be verified on the current hardware
-either way.
+Two implementations behind the trait. Most control, no dependency risk, more
+code.
 
 ## Decision
 
-**Try Option B in Phase 4, keep Option C as the documented fallback.**
+**Option C — native, using the `windows` crate on Windows.**
 
 Reasoning:
 
-1. It is the only option that preserves R4 *and* gives one codepath.
-2. The dependency risk is contained by the trait that already exists. If
-   flexaudio proves unreliable, the replacement is one module, not a rewrite.
-3. It is MIT and small enough to vendor if the upstream goes quiet — which, at
-   one maintainer and one release, is a realistic outcome to plan for.
-4. Phase 4 is far enough out that the package will have another six months of
-   history to judge by before anything depends on it.
+1. **Maturity gap is decisive.** `windows` 0.62.2 has ~310M downloads and
+   explicit GNU-target support; `flexaudio` has 448 and is almost certainly
+   untested on the GNU toolchain this project uses
+   ([ADR-0009](0009-gnu-toolchain-no-visual-studio.md)). The capture path is the
+   one place a fragile dependency is least acceptable.
+2. **R2 is non-negotiable and Option A cannot meet it.** Per-process isolation
+   is the difference between this and a system recorder.
+3. **macOS will be written natively regardless**, since Core Audio process taps
+   need direct control over the `CATapDescription` process list. A shared crate
+   would only have paid off if it worked well on *both*; carrying its risk for
+   one platform buys nothing.
 
-**Do not adopt it without an evaluation spike**: verify per-process capture
-actually works on Windows against Discord specifically, before writing anything
-against its API.
+## Outcome — verified in Phase 1
 
-## The question this leaves open
+Per-process capture works, and isolation is proven rather than assumed. Two
+`ffplay` instances were run simultaneously at 440 Hz and 1000 Hz, and each was
+captured in turn while the other played:
 
-**Is R4 worth it?** Option A is one mature codepath today if system-wide capture
-is acceptable — the cost being that music, game audio and notifications end up
-in the recording alongside the call.
+| Captured | 440 Hz band | 1000 Hz band |
+|---|---|---|
+| the 440 Hz process | **-21.1 dB** | -41.6 dB |
+| the 1000 Hz process | -40.6 dB | **-21.1 dB** |
 
-R4 is currently `SHOULD`, not `MUST`. If per-process capture turns out to be the
-thing that blocks macOS, dropping R4 and taking cpal is a legitimate trade, and
-a much smaller loss than not shipping macOS at all.
+Symmetric, ~20 dB separation. The excluded process is not in the recording.
 
 ## Consequences
 
-- Phase 4 gains an evaluation spike before implementation.
-- [ADR-0002](0002-language-and-runtime.md) is reinforced: Rust for the daemon
-  makes both Option A and Option B directly available.
-- The Windows and macOS capture specs stay valid — they describe the mechanism a
-  library would wrap, and remain the fallback if no library is used.
+- The Windows backend is `src/capture/windows.rs`, written against the `windows`
+  crate. No third-party audio dependency on the capture path.
+- macOS follows the same pattern
+  ([spec/capture-macos.md](../spec/capture-macos.md),
+  [CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md)).
+- Revisit only if `flexaudio` matures substantially *and* something makes
+  maintaining two native backends painful. Neither is true today.
+
+## The question this leaves open
+
+**Is R2 worth it?** If per-process capture ever turns out to be what blocks
+macOS, falling back to system-wide capture there is a legitimate trade — a much
+smaller loss than shipping no Mac build. That would be a deliberate decision,
+not a drift, and it would need a new ADR.

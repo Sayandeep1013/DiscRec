@@ -39,6 +39,9 @@ Each was considered and cut; the reasoning is in
 
 ## Start here
 
+**Picking this up cold?** [docs/PROJECT-LOG.md](docs/PROJECT-LOG.md) is the
+running record of every decision, blocker and reversal — read that first.
+
 | Doc | For |
 |---|---|
 | [docs/README.md](docs/README.md) | The full document tree |
