@@ -1,0 +1,19 @@
+[package]
+name = "discrec"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Records Discord's audio. Press record."
+license = "MIT"
+repository = "https://github.com/Sayandeep1013/DiscRec"
+
+# Dependencies are added per phase, deliberately.
+# Nothing here yet: the skeleton builds on std alone, so a fresh clone
+# compiles on both platforms before any backend exists.
+[dependencies]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

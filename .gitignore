@@ -1,0 +1,37 @@
+# build
+/target/
+node_modules/
+dist/
+build/
+*.pdb
+*.exe
+*.dll
+
+# android
+.gradle/
+local.properties
+*.apk
+*.aab
+
+# recordings & local state — never commit audio
+/recordings/
+*.ogg
+*.opus
+*.wav
+*.flac
+*.discrec
+
+# secrets
+.env
+.env.*
+!.env.example
+bot-token*
+*.pem
+
+# os
+.DS_Store
+Thumbs.db
+
+# rust
+/target/
+**/*.rs.bk
