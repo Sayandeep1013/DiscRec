@@ -7,9 +7,11 @@
 //!   discrec [secs]              capture Discord alone to WAV (Phase 1 spike)
 //!   discrec [secs] --pid N      capture an arbitrary process (test hook)
 //!   discrec [secs] --both       both streams via CaptureBackend (Phase 2)
+//!   discrec [secs] --mix        both streams mixed into one WAV (Phase 2)
 
 mod capture;
 mod discord;
+mod mixer;
 
 use capture::Source;
 use std::collections::HashMap;
@@ -30,6 +32,11 @@ fn main() {
 
     if args.iter().any(|a| a == "--both") {
         run_both_streams(seconds, pid_override);
+        return;
+    }
+
+    if args.iter().any(|a| a == "--mix") {
+        run_mixed(seconds, pid_override);
         return;
     }
 
@@ -179,6 +186,105 @@ fn main() {
             eprintln!("Capture failed: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+/// Record both streams into one mixed WAV — Discord's audio plus your own
+/// microphone, drift-corrected. This is the first output that contains a whole
+/// conversation: process loopback alone can never contain your own voice,
+/// because your microphone goes *into* Discord and is never rendered back to
+/// your speakers.
+fn run_mixed(seconds: u64, pid_override: Option<u32>) {
+    let pid = match pid_override {
+        Some(p) => {
+            println!("Target       pid {p} (override)");
+            p
+        }
+        None => match discord::find() {
+            Some(f) => {
+                println!(
+                    "Discord      {} (root pid {})",
+                    discord::variant_name(&f),
+                    f.pid
+                );
+                f.pid
+            }
+            None => {
+                eprintln!("Discord isn't running. Start it and try again.");
+                std::process::exit(1);
+            }
+        },
+    };
+
+    let out = "mixed.wav";
+    println!("Recording    {seconds}s -> {out}");
+    println!("             Discord + your microphone, in one file\n");
+
+    let mut backend = capture::backend();
+    let (tx, rx) = channel();
+    if let Err(e) = backend.start(pid, tx) {
+        eprintln!("\nCapture failed to start: {e}");
+        std::process::exit(1);
+    }
+
+    let fmt = backend.format();
+    let mut mixer = mixer::Mixer::new(fmt.channels);
+
+    let spec = hound::WavSpec {
+        channels: fmt.channels,
+        sample_rate: fmt.sample_rate,
+        bits_per_sample: 32,
+        sample_format: hound::SampleFormat::Float,
+    };
+    let mut writer = match hound::WavWriter::create(out, spec) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("Could not create {out}: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let (mut remote_peak, mut local_peak) = (0.0f32, 0.0f32);
+    let started = Instant::now();
+
+    while started.elapsed() < Duration::from_secs(seconds) {
+        if let Ok(frame) = rx.recv_timeout(Duration::from_millis(250)) {
+            let peak = frame.samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+            match frame.source {
+                Source::Microphone => {
+                    local_peak = local_peak.max(peak);
+                    mixer.push_mic(&frame.samples);
+                }
+                Source::DiscordOutput => {
+                    remote_peak = remote_peak.max(peak);
+                    for s in mixer.mix(&frame.samples) {
+                        let _ = writer.write_sample(s);
+                    }
+                }
+            }
+        }
+    }
+
+    let _ = backend.stop();
+    if let Err(e) = writer.finalize() {
+        eprintln!("Could not finalize {out}: {e}");
+        std::process::exit(1);
+    }
+
+    println!("\nDiscord peak    {remote_peak:.4}");
+    println!("Microphone peak {local_peak:.4}");
+    println!("Frames written  {}", mixer.frames_out);
+    println!("Live drift      {:+.0} ppm", mixer.drift_ppm());
+    println!("Mic underruns   {}", mixer.mic_underruns);
+    println!("Mic overruns    {}", mixer.mic_overruns);
+    println!("Limiter acted   {} samples", mixer.limited);
+
+    if remote_peak < 1.0e-6 {
+        println!("\nNo Discord audio — nobody was talking, or the wrong process.");
+    } else if local_peak < 1.0e-6 {
+        println!("\nNo microphone audio — check the default input device.");
+    } else {
+        println!("\nBOTH SIDES CAPTURED -> {out}");
     }
 }
 
