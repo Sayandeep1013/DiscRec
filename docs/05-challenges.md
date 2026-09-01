@@ -12,9 +12,17 @@ the system will catch them.
 
 Discord's loopback endpoint and the microphone are separate devices with
 separate hardware oscillators ([C3](02-constraints.md)). Nominally both run at
-48 kHz. Actually one runs at 48000.2 Hz and the other at 47999.6 Hz, and the
-difference accumulates: a few milliseconds after ten minutes, a noticeable
-offset after an hour.
+48 kHz. Neither actually does, and the difference accumulates.
+
+**Measured, not assumed.** On the development machine the loopback ran at
+47995.7 Hz (−89 ppm) and the microphone at 48007.2 Hz (+151 ppm): a relative
+drift of **−240 ppm, about 860 ms per hour.**
+
+This document originally estimated ~20 ppm and ~72 ms per hour. The real figure
+is roughly an order of magnitude worse, and nearly a second per hour is grossly
+audible — which makes drift compensation load-bearing rather than a refinement.
+→ [spec/mixing-and-timeline.md](spec/mixing-and-timeline.md) for how the
+measurement was taken, and the three ways it was wrong first.
 
 Because the mix is written at capture time, **the error cannot be corrected
 afterwards.** By the time anyone notices, every recording made so far has your

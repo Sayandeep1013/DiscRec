@@ -3,126 +3,245 @@
 //! Start with `docs/README.md`. The architecture is four parts:
 //! process finder, capture backend, mixer, writer.
 //!
-//! Phase 1 spike: this binary finds Discord, captures its process audio for a
-//! few seconds, and writes a WAV. Proving per-process isolation (R2) is the
-//! whole point — play music while it runs and the output must not contain it.
+//! Currently a development harness, not the app. Modes:
+//!   discrec [secs]              capture Discord alone to WAV (Phase 1 spike)
+//!   discrec [secs] --pid N      capture an arbitrary process (test hook)
+//!   discrec [secs] --both       both streams via CaptureBackend (Phase 2)
 
 mod capture;
 mod discord;
 
-use std::time::Duration;
+use capture::Source;
+use std::collections::HashMap;
+use std::sync::mpsc::channel;
+use std::time::{Duration, Instant};
 
 fn main() {
-    println!(
-        "DiscRec {} — Phase 1 capture spike\n",
-        env!("CARGO_PKG_VERSION")
-    );
+    println!("DiscRec {}\n", env!("CARGO_PKG_VERSION"));
 
-    // Test hook: `discrec <secs> --pid N` captures an arbitrary process, so
-    // the pipeline can be validated against something known to be making
-    // noise. Distinguishes "my code is wrong" from "Discord is silent".
     let args: Vec<String> = std::env::args().collect();
+    let seconds: u64 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(12);
+
     let pid_override = args
         .iter()
         .position(|a| a == "--pid")
         .and_then(|i| args.get(i + 1))
         .and_then(|v| v.parse::<u32>().ok());
 
-    if let Some(pid) = pid_override {
-        let seconds: u64 = args.get(1).and_then(|a| a.parse().ok()).unwrap_or(8);
-        println!("Target       pid {pid} (override)");
-        println!(
-            "Recording    {seconds}s -> probe.wav
-"
-        );
-        #[cfg(windows)]
-        match capture::windows::record_to_wav(pid, Duration::from_secs(seconds), "probe.wav") {
-            Ok(st) => {
-                println!(
-                    "Frames {}  peak {:.4}  silent_pkts {}",
-                    st.frames, st.peak, st.silent_packets
-                );
-                println!(
-                    "{}",
-                    if st.is_silent() {
-                        "SILENT"
-                    } else {
-                        "SIGNAL CAPTURED"
-                    }
-                );
-            }
-            Err(e) => println!("failed: {e}"),
-        }
+    if args.iter().any(|a| a == "--both") {
+        run_both_streams(seconds, pid_override);
         return;
     }
 
-    let found = match discord::find() {
-        Some(f) => {
-            println!(
-                "Discord     {} (root pid {})",
-                discord::variant_name(&f),
+    let pid = match pid_override {
+        Some(p) => {
+            println!("Target       pid {p} (override)");
+            p
+        }
+        None => match discord::find() {
+            Some(f) => {
+                println!(
+                    "Discord      {} (root pid {})",
+                    discord::variant_name(&f),
+                    f.pid
+                );
                 f.pid
-            );
-            f
-        }
-        None => {
-            eprintln!("Discord isn't running. Start it and try again.");
-            std::process::exit(1);
-        }
+            }
+            None => {
+                eprintln!("Discord isn't running. Start it and try again.");
+                std::process::exit(1);
+            }
+        },
     };
 
-    let seconds: u64 = std::env::args()
-        .nth(1)
-        .and_then(|a| a.parse().ok())
-        .unwrap_or(12);
-
-    let out = "discord-capture.wav";
-    println!("Recording    {seconds}s -> {out}");
-    println!("             (play music now — it must NOT appear in the file)\n");
+    let out = "capture.wav";
+    println!("Recording    {seconds}s -> {out}\n");
 
     #[cfg(windows)]
-    let result = capture::windows::record_to_wav(found.pid, Duration::from_secs(seconds), out);
-
+    let result = capture::windows::record_to_wav(pid, Duration::from_secs(seconds), out);
     #[cfg(not(windows))]
-    let result: Result<capture::CaptureStats, capture::CaptureError> = {
-        let _ = found;
-        Err(capture::CaptureError::Platform(
-            "the Phase 1 spike is Windows-only so far".into(),
-        ))
+    let result: Result<capture::windows::CaptureStats, capture::CaptureError> = {
+        let _ = pid;
+        Err(capture::CaptureError::Platform("Windows-only".into()))
     };
 
     match result {
         Ok(stats) => {
-            let secs = stats.duration.as_secs_f32();
             println!("Frames       {}", stats.frames);
-            println!(
-                "Duration     {:.1}s of audio",
-                stats.frames as f32 / 48_000.0
-            );
+            println!("Audio        {:.1}s", stats.frames as f32 / 48_000.0);
             println!("Silent pkts  {}", stats.silent_packets);
-            println!("Peak         {:.4}", stats.peak);
-            println!("Elapsed      {secs:.1}s\n");
+            println!("Peak         {:.4}\n", stats.peak);
 
             if stats.frames == 0 {
-                println!("NO DATA. The stream opened but delivered nothing.");
-                println!("Likely the wrong PID, or the process tree flag was ignored.");
+                println!("NO DATA — stream opened but delivered nothing.");
                 std::process::exit(2);
             } else if stats.is_silent() {
-                println!("SILENT. Frames arrived but every sample was zero.");
-                println!("This is the P2 failure mode — a healthy-looking stream carrying");
-                println!("nothing. If Discord genuinely made no sound, that's expected;");
-                println!("otherwise the capture is attached to the wrong thing.");
+                println!("SILENT — frames arrived, every sample zero.");
+                println!("Either the source made no sound, or capture is attached");
+                println!("to the wrong thing. See docs/05-challenges.md#p2.");
                 std::process::exit(3);
-            } else {
-                println!("Signal captured. Now verify isolation:");
-                println!("  1. Open {out} and confirm you hear Discord.");
-                println!("  2. Confirm you do NOT hear the music that was playing.");
-                println!("That second check is requirement R2.");
             }
+            println!("SIGNAL CAPTURED -> {out}");
         }
         Err(e) => {
             eprintln!("Capture failed: {e}");
             std::process::exit(1);
         }
     }
+}
+
+/// One stream's observations during a run.
+#[derive(Default)]
+struct Track {
+    packets: u64,
+    samples: u64,
+    first_pos: Option<u64>,
+    last_pos: u64,
+    peak: f32,
+    /// Wall time of this stream's own first and last packet. Rates measured
+    /// against these — rather than the run's total elapsed time — exclude
+    /// startup skew, which otherwise swamps the drift we care about.
+    first_seen: Option<Instant>,
+    last_seen: Option<Instant>,
+}
+
+impl Track {
+    fn advance(&self) -> f64 {
+        self.last_pos.saturating_sub(self.first_pos.unwrap_or(0)) as f64
+    }
+
+    fn span_secs(&self) -> f64 {
+        match (self.first_seen, self.last_seen) {
+            (Some(a), Some(b)) => b.duration_since(a).as_secs_f64(),
+            _ => 0.0,
+        }
+    }
+}
+
+/// Phase 2 harness: run both streams through `CaptureBackend` and report what
+/// each device's own clock did. This is the measurement the mixer is built on.
+fn run_both_streams(seconds: u64, pid_override: Option<u32>) {
+    let pid = match pid_override {
+        Some(p) => {
+            println!("Target       pid {p} (override)");
+            p
+        }
+        None => match discord::find() {
+            Some(f) => {
+                println!(
+                    "Discord      {} (root pid {})",
+                    discord::variant_name(&f),
+                    f.pid
+                );
+                f.pid
+            }
+            None => {
+                eprintln!("Discord isn't running. Start it and try again.");
+                std::process::exit(1);
+            }
+        },
+    };
+
+    println!("Capturing    {seconds}s from both streams\n");
+
+    let mut backend = capture::backend();
+    let (tx, rx) = channel();
+
+    if let Err(e) = backend.start(pid, tx) {
+        eprintln!("\nCapture failed to start: {e}");
+        std::process::exit(1);
+    }
+
+    let mut tracks: HashMap<&'static str, Track> = HashMap::new();
+    let started = Instant::now();
+
+    // Both streams prefill a 200 ms buffer, so their first packets arrive as a
+    // burst that is not real-time audio. Counting it inflates the measured
+    // rate by roughly 1% over a 20 s run — which looks exactly like drift.
+    // Discard a warm-up window and measure only the steady state.
+    let warmup = Duration::from_secs(3);
+
+    while started.elapsed() < Duration::from_secs(seconds) {
+        if let Ok(frame) = rx.recv_timeout(Duration::from_millis(250)) {
+            if started.elapsed() < warmup {
+                continue;
+            }
+            let name = match frame.source {
+                Source::DiscordOutput => "discord",
+                Source::Microphone => "microphone",
+            };
+            let t = tracks.entry(name).or_default();
+            t.packets += 1;
+            t.samples += frame.samples.len() as u64;
+            t.first_pos.get_or_insert(frame.sample_pos);
+            t.last_pos = frame.sample_pos;
+            t.first_seen.get_or_insert_with(Instant::now);
+            t.last_seen = Some(Instant::now());
+            for s in &frame.samples {
+                if s.abs() > t.peak {
+                    t.peak = s.abs();
+                }
+            }
+        }
+    }
+
+    let _ = backend.stop();
+    let elapsed = started.elapsed().as_secs_f64();
+
+    println!(
+        "\n{:<12} {:>8} {:>12} {:>12} {:>8}",
+        "stream", "packets", "samples", "clock adv", "peak"
+    );
+    for name in ["discord", "microphone"] {
+        match tracks.get(name) {
+            Some(t) => println!(
+                "{:<12} {:>8} {:>12} {:>12} {:>8.4}",
+                name,
+                t.packets,
+                t.samples,
+                t.advance() as u64,
+                t.peak
+            ),
+            None => println!("{name:<12}     NONE"),
+        }
+    }
+
+    // Each device's clock advances at its own nominal rate. Disagreement is
+    // the drift the mixer has to correct (P1). Measured per-stream between its
+    // own first and last packet: loopback activation is async and slower than
+    // opening the microphone, so measuring both against total elapsed time
+    // reports startup skew as if it were drift.
+    println!("\nRun wall clock  {elapsed:.2}s");
+
+    let mut rates: Vec<(&str, f64)> = Vec::new();
+    for name in ["discord", "microphone"] {
+        if let Some(t) = tracks.get(name) {
+            let (advance, span) = (t.advance(), t.span_secs());
+            if advance > 0.0 && span > 0.0 {
+                let rate = advance / span;
+                rates.push((name, rate));
+                println!(
+                    "{name:<15} {rate:9.1} Hz over its own {span:.2}s  ({:+.0} ppm vs 48000)",
+                    (rate / 48_000.0 - 1.0) * 1.0e6
+                );
+            }
+        }
+    }
+
+    if rates.len() == 2 {
+        let rel = (rates[0].1 / rates[1].1 - 1.0) * 1.0e6;
+        println!("\nRelative drift  {rel:+.0} ppm between the two clocks");
+        println!(
+            "                ~{:.0} ms per hour if uncorrected",
+            rel.abs() * 3.6
+        );
+        println!("\nShort runs are noisy: an order of magnitude, not a calibration.");
+        println!("The mixer measures continuously rather than trusting one reading.");
+    }
+
+    if tracks.len() < 2 {
+        println!("\nOnly one stream produced frames — the other is not working.");
+        std::process::exit(2);
+    }
+    println!("\nBoth streams delivered frames.");
 }

@@ -76,20 +76,27 @@ impl std::fmt::Display for CaptureError {
 
 impl std::error::Error for CaptureError {}
 
-/// Where a backend delivers audio. Called off the real-time callback thread.
-pub type FrameSink = Box<dyn FnMut(Frame) + Send>;
+/// Where a backend delivers audio.
+///
+/// A channel rather than a closure: Phase 2 runs the Discord loopback and the
+/// microphone on separate threads, each with its own device clock, and the
+/// mixer reconciles them downstream. A shared `FnMut` would need a mutex on
+/// the audio path for no benefit.
+pub type FrameSink = std::sync::mpsc::Sender<Frame>;
 
 pub trait CaptureBackend: Send {
     /// Attach to Discord and the default input, and begin delivering frames.
     ///
-    /// Must return `NoSignal` rather than starting a stream that carries
-    /// nothing — a silent recording discovered a week later is the worst
-    /// outcome this project has.
+    /// Returns once both streams are running. Must fail rather than start a
+    /// stream that carries nothing — a silent recording discovered a week
+    /// later is the worst outcome this project has.
     fn start(&mut self, discord_pid: u32, sink: FrameSink) -> Result<(), CaptureError>;
 
+    /// Stop both streams and join their threads.
     fn stop(&mut self) -> Result<(), CaptureError>;
 
-    /// Format of the Discord stream. The microphone is resampled to match.
+    /// Format of the Discord stream, which is the timeline master. The
+    /// microphone is resampled to match it.
     fn format(&self) -> StreamFormat;
 }
 

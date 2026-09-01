@@ -13,8 +13,31 @@ half a second before they were asked.
 Two capture streams, two hardware clocks ([C3](../02-constraints.md)). Both
 claim 48 kHz. Neither is exactly 48 kHz, and they are not the same amount wrong.
 
-At 20 parts per million — ordinary for consumer hardware — the streams separate
-by about 72 ms per hour. That is well past audible for voice.
+**Measured on the development machine (Phase 2, 2026-09-01):** the loopback
+device ran at 47995.7 Hz (−89 ppm) and the microphone at 48007.2 Hz (+151 ppm),
+a **relative drift of −240 ppm — roughly 860 ms per hour.**
+
+That is about an order of magnitude worse than the ~20 ppm this spec originally
+assumed. Nearly a second of separation per hour is grossly audible, and it
+makes drift compensation load-bearing rather than a refinement.
+
+Measuring this correctly took three attempts, and each failure looked like
+drift:
+
+1. Comparing each stream's clock advance against the run's *total* elapsed time
+   reported ~3400 ppm. That was **startup skew** — loopback activation is async
+   and slower than opening the microphone, so the two streams ran for different
+   lengths of time inside the same window. Fixed by measuring each stream
+   between its own first and last packet.
+2. The remaining ~3300 ppm was suspected to be an artifact of Discord being
+   silent. A control run against a process genuinely producing audio showed the
+   same figure, **disproving that**.
+3. The real cause was the **200 ms buffer prefill**: both streams deliver their
+   first packets as a burst that is not real-time audio, worth about 1% over a
+   20 s run. Discarding a warm-up window gave the −240 ppm figure above.
+
+The lesson generalises: a measurement of drift is itself easy to get wrong, and
+every wrong version produced a plausible-looking number.
 
 Because the mix is written at capture time, **there is no post-processing fix.**
 The two sources are summed into one waveform and cannot be pulled apart.
