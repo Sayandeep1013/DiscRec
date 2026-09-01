@@ -308,6 +308,52 @@ Verified clean: `cargo build`, `cargo clippy -- -D warnings`,
 **Commit convention: no co-author or attribution trailers.** The user asked for
 this explicitly.
 
+### Phase 2 progress
+
+**Both sides of a call now record into one Ogg/Opus file**, confirmed by ear.
+
+- `src/mixer.rs` — Discord is the timeline master; the microphone is
+  continuously resampled to match, steered by microphone buffer depth. Soft-knee
+  limiter on the sum. 7 unit tests.
+- `src/writer.rs` — Ogg/Opus at 96 kbps, pages flushed as produced, nothing
+  back-patched at the end (R7). 3 unit tests. Verified decoding cleanly under
+  `ffmpeg -f null`.
+- **0.38 MB vs 16.5 MB** for the same 30 s: ~43x smaller than the WAV it
+  replaces.
+
+**Why your own voice is not in a loopback capture.** Worth stating plainly
+because it looks like a bug and is not: process loopback captures what Discord
+*renders to your speakers*, which is the other people. Your microphone goes
+*into* Discord and is never played back to you, so it can never appear in a
+loopback capture. That is the entire reason the microphone is a second stream.
+
+**A controller bug worth remembering.** The first working mixer steered the
+resample ratio on *instantaneous* buffer depth. Frames from the two streams
+arrive interleaved and bursty, so depth swings by hundreds of frames between
+calls, and the ratio wandered across roughly 10,000 ppm — against a real
+hardware drift of ~240 ppm. That is pitch warble, not correction.
+
+`spec/mixing-and-timeline.md` already said the controller must be slow, "seconds,
+not milliseconds". The spec was right and the implementation ignored it.
+Smoothing the depth measurement with a ~5 s time constant settled the ratio to a
+stable +983 ppm. That residual is the operating point a proportional-only
+controller needs to hold the buffer steady, not an alignment error — a buffer
+that is neither draining nor growing means alignment is being maintained.
+
+Whether it truly holds is the 4-hour soak's job, and that still gates the phase.
+
+### Toolchain: two more C-dependency costs
+
+ADR-0009 predicted that C-dependent crates would be where the GNU toolchain
+bites. Opus proved it twice:
+
+1. `opus` 0.3 vendors libopus and builds it with **cmake**, which was not
+   installed. Installed to `D:\cmake` (51 MB), added to PATH.
+2. That vendored libopus declares `cmake_minimum_required` below 3.5, which
+   CMake 4.x removed support for. Rather than downgrade CMake or force a policy
+   override, bumping to `opus` 0.4 was enough — it vendors via `opusic-sys`
+   with a modern CMakeLists and builds clean.
+
 ### ADR-0007 resolved
 
 The spike answered it: **native, via the `windows` crate.** `flexaudio` has 448

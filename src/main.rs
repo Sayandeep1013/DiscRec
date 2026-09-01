@@ -12,6 +12,7 @@
 mod capture;
 mod discord;
 mod mixer;
+mod writer;
 
 use capture::Source;
 use std::collections::HashMap;
@@ -216,9 +217,9 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
         },
     };
 
-    let out = "mixed.wav";
+    let out = "mixed.ogg";
     println!("Recording    {seconds}s -> {out}");
-    println!("             Discord + your microphone, in one file\n");
+    println!("             Discord + your microphone, Ogg/Opus\n");
 
     let mut backend = capture::backend();
     let (tx, rx) = channel();
@@ -230,13 +231,7 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
     let fmt = backend.format();
     let mut mixer = mixer::Mixer::new(fmt.channels);
 
-    let spec = hound::WavSpec {
-        channels: fmt.channels,
-        sample_rate: fmt.sample_rate,
-        bits_per_sample: 32,
-        sample_format: hound::SampleFormat::Float,
-    };
-    let mut writer = match hound::WavWriter::create(out, spec) {
+    let mut writer = match writer::OpusWriter::create(out, fmt.channels) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("Could not create {out}: {e}");
@@ -257,8 +252,10 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
                 }
                 Source::DiscordOutput => {
                     remote_peak = remote_peak.max(peak);
-                    for s in mixer.mix(&frame.samples) {
-                        let _ = writer.write_sample(s);
+                    let mixed = mixer.mix(&frame.samples);
+                    if let Err(e) = writer.write(&mixed) {
+                        eprintln!("Write failed: {e}");
+                        break;
                     }
                 }
             }

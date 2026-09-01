@@ -22,6 +22,20 @@ const TARGET_FILL_FRAMES: usize = 2400; // 50 ms at 48 kHz
 /// Too high and the microphone audibly wobbles in pitch.
 const CONTROLLER_GAIN: f64 = 0.05;
 
+/// Smoothing applied to the measured buffer depth before the controller sees
+/// it.
+///
+/// This is not optional. Frames from the two streams arrive interleaved and in
+/// bursts, so the *instantaneous* buffer depth swings by hundreds of frames
+/// between calls. Steering on that directly made the ratio wander across a
+/// 10,000 ppm range in testing — against a real hardware drift of ~240 ppm —
+/// which is pitch warble, not correction.
+///
+/// `mix` is called roughly every 10 ms, so this gives a time constant of about
+/// five seconds: slow enough to ignore burstiness, fast enough to track a
+/// clock that is genuinely running away.
+const FILL_SMOOTHING: f64 = 0.002;
+
 /// Ratio is clamped to this much either side of 1.0. Real drift is measured in
 /// hundreds of ppm; anything approaching a percent means something else is
 /// wrong, and silently resampling that far would hide the fault.
@@ -38,6 +52,9 @@ pub struct Mixer {
     read_pos: f64,
     /// Microphone frames consumed per output frame. 1.0 means the clocks agree.
     ratio: f64,
+    /// Smoothed buffer depth, in frames. Seeded at the target so the startup
+    /// transient does not slam the controller to a limit.
+    smoothed_fill: f64,
     /// Frames of microphone audio dropped because the buffer overran.
     pub mic_overruns: u64,
     /// Output frames produced with no microphone audio available.
@@ -55,6 +72,7 @@ impl Mixer {
             mic: VecDeque::with_capacity(TARGET_FILL_FRAMES * 4 * channels.max(1) as usize),
             read_pos: 0.0,
             ratio: 1.0,
+            smoothed_fill: TARGET_FILL_FRAMES as f64,
             mic_overruns: 0,
             mic_underruns: 0,
             frames_out: 0,
@@ -153,7 +171,12 @@ impl Mixer {
     fn steer_ratio(&mut self) {
         let fill = self.buffered_frames() as f64;
         let target = TARGET_FILL_FRAMES as f64;
-        let error = (fill - target) / target;
+
+        // Smooth before steering. See FILL_SMOOTHING — acting on the raw depth
+        // makes the controller chase burstiness rather than drift.
+        self.smoothed_fill += (fill - self.smoothed_fill) * FILL_SMOOTHING;
+
+        let error = (self.smoothed_fill - target) / target;
 
         // Proportional only. An integral term would eventually null the error
         // but also wind up during the startup transient, and the steady-state
@@ -198,7 +221,10 @@ mod tests {
         let mut m = Mixer::new(2);
         let out = m.mix(&block(480, 0.3));
         assert_eq!(out.len(), 960);
-        assert!(m.mic_underruns > 0, "underrun should be counted, not hidden");
+        assert!(
+            m.mic_underruns > 0,
+            "underrun should be counted, not hidden"
+        );
         // Remote audio must still be present at full level.
         assert!((out[0] - 0.3).abs() < 1e-6);
     }
@@ -208,7 +234,11 @@ mod tests {
         let mut m = Mixer::new(2);
         m.push_mic(&block(5000, 0.25));
         let out = m.mix(&block(480, 0.25));
-        assert!(out[0] > 0.4, "expected both sides in the sum, got {}", out[0]);
+        assert!(
+            out[0] > 0.4,
+            "expected both sides in the sum, got {}",
+            out[0]
+        );
     }
 
     #[test]
@@ -216,19 +246,39 @@ mod tests {
         let mut m = Mixer::new(2);
         m.push_mic(&block(5000, 0.9));
         let out = m.mix(&block(480, 0.9));
-        assert!(out.iter().all(|s| s.abs() < 1.0), "limiter must hold below full scale");
+        assert!(
+            out.iter().all(|s| s.abs() < 1.0),
+            "limiter must hold below full scale"
+        );
         assert!(m.limited > 0);
     }
 
     #[test]
-    fn a_filling_buffer_speeds_the_microphone_up() {
+    fn a_sustained_backlog_speeds_the_microphone_up() {
         let mut m = Mixer::new(2);
-        // Far more microphone audio than the target depth: its clock is fast.
-        m.push_mic(&block(TARGET_FILL_FRAMES * 3, 0.1));
-        m.mix(&block(480, 0.1));
+        // Keep the buffer persistently deep: the microphone clock is fast.
+        for _ in 0..2000 {
+            m.push_mic(&block(600, 0.1));
+            m.mix(&block(480, 0.1));
+        }
         assert!(
             m.drift_ppm() > 0.0,
-            "ratio should rise to drain a backlog, got {} ppm",
+            "ratio should rise to drain a sustained backlog, got {} ppm",
+            m.drift_ppm()
+        );
+    }
+
+    #[test]
+    fn a_single_burst_does_not_move_the_ratio() {
+        // The bug this guards against: steering on instantaneous buffer depth
+        // made the ratio wander across ~10,000 ppm against a real drift of
+        // ~240 ppm, which is pitch warble rather than correction.
+        let mut m = Mixer::new(2);
+        m.push_mic(&block(TARGET_FILL_FRAMES * 4, 0.1));
+        m.mix(&block(480, 0.1));
+        assert!(
+            m.drift_ppm().abs() < 500.0,
+            "one burst should barely move the ratio, got {} ppm",
             m.drift_ppm()
         );
     }
@@ -236,8 +286,10 @@ mod tests {
     #[test]
     fn ratio_never_leaves_sane_bounds() {
         let mut m = Mixer::new(2);
-        m.push_mic(&block(TARGET_FILL_FRAMES * 100, 0.1));
-        m.mix(&block(480, 0.1));
+        for _ in 0..5000 {
+            m.push_mic(&block(2000, 0.1));
+            m.mix(&block(480, 0.1));
+        }
         assert!(m.ratio <= 1.0 + MAX_RATIO_DEVIATION);
         assert!(m.ratio >= 1.0 - MAX_RATIO_DEVIATION);
     }

@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "discrec"
 version = "0.1.0"
 edition = "2021"
@@ -8,11 +8,18 @@ license = "MIT"
 repository = "https://github.com/Sayandeep1013/DiscRec"
 
 [dependencies]
-# Phase 1: raw PCM out to WAV. Pure Rust, no C dependency.
+# WAV output, retained for diagnostics and test fixtures. Pure Rust.
 hound = "3.5"
 
+# Opus is the shipping format: ~10x smaller than WAV for voice, open, and
+# what Discord already uses. Both of these are bindings to C libraries, so
+# they are the first dependencies that genuinely need the MinGW compiler
+# installed for ADR-0009.
+opus = "0.4"
+ogg = "0.9"
+
 [target.'cfg(windows)'.dependencies]
-# Bindings generated from Windows metadata, not SDK headers — this is what
+# Bindings generated from Windows metadata, not SDK headers â€” this is what
 # lets the GNU toolchain reach the process-loopback APIs. See ADR-0009.
 windows-core = "0.62"
 
