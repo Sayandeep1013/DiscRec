@@ -39,8 +39,10 @@ Each was considered and cut; the reasoning is in
 
 ## Start here
 
-**Picking this up cold?** [docs/PROJECT-LOG.md](docs/PROJECT-LOG.md) is the
-running record of every decision, blocker and reversal — read that first.
+**Picking this up cold?** Start with
+[docs/HANDOFF.md](docs/HANDOFF.md) — current state, how to run it, what to do
+next. Then [docs/PROJECT-LOG.md](docs/PROJECT-LOG.md) for why the decisions are
+what they are.
 
 | Doc | For |
 |---|---|

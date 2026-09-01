@@ -5,8 +5,10 @@ Written Sept 2026. Platform API and library claims have a shelf life; see
 
 ## Start here
 
-**[PROJECT-LOG.md](PROJECT-LOG.md)** — the running record of decisions,
-blockers, reversals and current state. Read first when picking this up cold.
+1. **[HANDOFF.md](HANDOFF.md)** — where the project is, how to build and run it,
+   what to do next, and the traps worth knowing. Read this first.
+2. **[PROJECT-LOG.md](PROJECT-LOG.md)** — why the decisions are what they are.
+   The scope changed three times and several conclusions were reversed.
 
 ## Understand it
 
