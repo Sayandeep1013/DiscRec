@@ -1,4 +1,4 @@
-//! DiscRec — records Discord's audio. Press record.
+﻿//! DiscRec â€” records Discord's audio. Press record.
 //!
 //! Start with `docs/README.md`. The architecture is four parts:
 //! process finder, capture backend, mixer, writer.
@@ -7,7 +7,7 @@
 //!   discrec [secs]              capture Discord alone to WAV (Phase 1 spike)
 //!   discrec [secs] --pid N      capture an arbitrary process (test hook)
 //!   discrec [secs] --both       both streams via CaptureBackend (Phase 2)
-//!   discrec [secs] --mix        both streams mixed into one WAV (Phase 2)
+//!   discrec [secs] --mix        both streams mixed into one Ogg/Opus file
 
 mod capture;
 mod discord;
@@ -93,7 +93,7 @@ fn main() {
                 println!(
                     "{}",
                     if st.is_silent() {
-                        "SILENT — nothing is playing to this endpoint."
+                        "SILENT â€” nothing is playing to this endpoint."
                     } else {
                         "SIGNAL CAPTURED -> capture.wav"
                     }
@@ -105,7 +105,7 @@ fn main() {
     }
 
     // Diagnostic: whole-system loopback rather than one process. Kept as a
-    // comparison point when a per-process capture comes back silent — it
+    // comparison point when a per-process capture comes back silent â€” it
     // separates "wrong process" from "nothing playing anywhere".
     //
     // Note: per-process loopback DOES capture Discord voice. An earlier
@@ -122,7 +122,7 @@ fn main() {
                 println!(
                     "{}",
                     if st.is_silent() {
-                        "SILENT — nothing playing on this machine at all."
+                        "SILENT â€” nothing playing on this machine at all."
                     } else {
                         "SIGNAL CAPTURED -> capture.wav"
                     }
@@ -173,10 +173,10 @@ fn main() {
             println!("Peak         {:.4}\n", stats.peak);
 
             if stats.frames == 0 {
-                println!("NO DATA — stream opened but delivered nothing.");
+                println!("NO DATA â€” stream opened but delivered nothing.");
                 std::process::exit(2);
             } else if stats.is_silent() {
-                println!("SILENT — frames arrived, every sample zero.");
+                println!("SILENT â€” frames arrived, every sample zero.");
                 println!("Either the source made no sound, or capture is attached");
                 println!("to the wrong thing. See docs/05-challenges.md#p2.");
                 std::process::exit(3);
@@ -190,7 +190,7 @@ fn main() {
     }
 }
 
-/// Record both streams into one mixed WAV — Discord's audio plus your own
+/// Record both streams into one mixed WAV â€” Discord's audio plus your own
 /// microphone, drift-corrected. This is the first output that contains a whole
 /// conversation: process loopback alone can never contain your own voice,
 /// because your microphone goes *into* Discord and is never rendered back to
@@ -248,7 +248,7 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
                 use std::io::Write;
                 let _ = writeln!(
                     f,
-                    "elapsed_s,drift_ppm,buffered_frames,mic_underruns,mic_overruns,frames_out,limited"
+                    "elapsed_s,drift_ppm,smoothed_frames,raw_frames,integral,mic_underruns,mic_overruns,clamp_hits,frames_out,limited"
                 );
                 println!("Telemetry    soak.csv, sampled every 30s\n");
                 Some(f)
@@ -290,12 +290,15 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
                     use std::io::Write;
                     let _ = writeln!(
                         f,
-                        "{:.0},{:.1},{},{},{},{},{}",
+                        "{:.0},{:.1},{:.0},{},{:.2},{},{},{},{},{}",
                         elapsed.as_secs_f64(),
                         mixer.drift_ppm(),
+                        mixer.smoothed_frames(),
                         mixer.buffered_frames(),
+                        mixer.integral_frames(),
                         mixer.mic_underruns,
                         mixer.mic_overruns,
+                        mixer.clamp_hits,
                         mixer.frames_out,
                         mixer.limited
                     );
@@ -318,12 +321,13 @@ fn run_mixed(seconds: u64, pid_override: Option<u32>) {
     println!("Live drift      {:+.0} ppm", mixer.drift_ppm());
     println!("Mic underruns   {}", mixer.mic_underruns);
     println!("Mic overruns    {}", mixer.mic_overruns);
+    println!("Clamp hits      {}", mixer.clamp_hits);
     println!("Limiter acted   {} samples", mixer.limited);
 
     if remote_peak < 1.0e-6 {
-        println!("\nNo Discord audio — nobody was talking, or the wrong process.");
+        println!("\nNo Discord audio â€” nobody was talking, or the wrong process.");
     } else if local_peak < 1.0e-6 {
-        println!("\nNo microphone audio — check the default input device.");
+        println!("\nNo microphone audio â€” check the default input device.");
     } else {
         println!("\nBOTH SIDES CAPTURED -> {out}");
     }
@@ -338,7 +342,7 @@ struct Track {
     last_pos: u64,
     peak: f32,
     /// Wall time of this stream's own first and last packet. Rates measured
-    /// against these — rather than the run's total elapsed time — exclude
+    /// against these â€” rather than the run's total elapsed time â€” exclude
     /// startup skew, which otherwise swamps the drift we care about.
     first_seen: Option<Instant>,
     last_seen: Option<Instant>,
@@ -396,7 +400,7 @@ fn run_both_streams(seconds: u64, pid_override: Option<u32>) {
 
     // Both streams prefill a 200 ms buffer, so their first packets arrive as a
     // burst that is not real-time audio. Counting it inflates the measured
-    // rate by roughly 1% over a 20 s run — which looks exactly like drift.
+    // rate by roughly 1% over a 20 s run â€” which looks exactly like drift.
     // Discard a warm-up window and measure only the steady state.
     let warmup = Duration::from_secs(3);
 
@@ -479,7 +483,7 @@ fn run_both_streams(seconds: u64, pid_override: Option<u32>) {
     }
 
     if tracks.len() < 2 {
-        println!("\nOnly one stream produced frames — the other is not working.");
+        println!("\nOnly one stream produced frames â€” the other is not working.");
         std::process::exit(2);
     }
     println!("\nBoth streams delivered frames.");
