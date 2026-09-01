@@ -33,6 +33,98 @@ fn main() {
         return;
     }
 
+    // Diagnostic: which output endpoint is an app actually playing to?
+    // A machine commonly has several active ones (Speaker and Headphone on the
+    // same codec), and "the default endpoint" is not necessarily where a given
+    // application's audio goes.
+    #[cfg(windows)]
+    if args.iter().any(|a| a == "--devices") {
+        match capture::windows::list_render_devices() {
+            Ok(devs) => {
+                println!("Active output endpoints:\n");
+                for d in &devs {
+                    println!(
+                        "  [{}] {}{}",
+                        d.index,
+                        d.name,
+                        if d.is_default {
+                            "   (WINDOWS DEFAULT)"
+                        } else {
+                            ""
+                        }
+                    );
+                }
+                println!("\nCapture one with:  discrec <secs> --device <n>");
+            }
+            Err(e) => eprintln!("Could not list endpoints: {e}"),
+        }
+        return;
+    }
+
+    #[cfg(windows)]
+    if let Some(idx) = args
+        .iter()
+        .position(|a| a == "--device")
+        .and_then(|i| args.get(i + 1))
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        let name = capture::windows::list_render_devices()
+            .ok()
+            .and_then(|d| d.into_iter().find(|d| d.index == idx).map(|d| d.name))
+            .unwrap_or_else(|| format!("endpoint {idx}"));
+        println!("Target       endpoint [{idx}] {name}");
+        println!("Recording    {seconds}s -> capture.wav\n");
+        match capture::windows::record_device_to_wav(
+            idx,
+            Duration::from_secs(seconds),
+            "capture.wav",
+        ) {
+            Ok(st) => {
+                println!("Frames       {}", st.frames);
+                println!("Peak         {:.4}\n", st.peak);
+                println!(
+                    "{}",
+                    if st.is_silent() {
+                        "SILENT — nothing is playing to this endpoint."
+                    } else {
+                        "SIGNAL CAPTURED -> capture.wav"
+                    }
+                );
+            }
+            Err(e) => eprintln!("Capture failed: {e}"),
+        }
+        return;
+    }
+
+    // Diagnostic: whole-system loopback rather than one process. Kept as a
+    // comparison point when a per-process capture comes back silent — it
+    // separates "wrong process" from "nothing playing anywhere".
+    //
+    // Note: per-process loopback DOES capture Discord voice. An earlier
+    // reading that it did not was an artifact of test windows too short for a
+    // human to start talking in. See docs/PROJECT-LOG.md.
+    #[cfg(windows)]
+    if args.iter().any(|a| a == "--system") {
+        println!("Target       WHOLE SYSTEM (default render endpoint)");
+        println!("Recording    {seconds}s -> capture.wav\n");
+        match capture::windows::record_system_to_wav(Duration::from_secs(seconds), "capture.wav") {
+            Ok(st) => {
+                println!("Frames       {}", st.frames);
+                println!("Peak         {:.4}\n", st.peak);
+                println!(
+                    "{}",
+                    if st.is_silent() {
+                        "SILENT — nothing playing on this machine at all."
+                    } else {
+                        "SIGNAL CAPTURED -> capture.wav"
+                    }
+                );
+            }
+            Err(e) => eprintln!("Capture failed: {e}"),
+        }
+        return;
+    }
+
     let pid = match pid_override {
         Some(p) => {
             println!("Target       pid {p} (override)");

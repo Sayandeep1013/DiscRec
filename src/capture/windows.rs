@@ -16,11 +16,11 @@ use std::time::{Duration, Instant};
 use windows::core::{implement, Interface, Ref, Result as WinResult, PCWSTR};
 use windows::Win32::Foundation::S_OK;
 use windows::Win32::Media::Audio::{
-    eCapture, eCommunications, ActivateAudioInterfaceAsync, IActivateAudioInterfaceAsyncOperation,
-    IActivateAudioInterfaceCompletionHandler, IActivateAudioInterfaceCompletionHandler_Impl,
-    IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator, MMDeviceEnumerator,
-    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
-    WAVEFORMATEX,
+    eCapture, eCommunications, eConsole, eRender, ActivateAudioInterfaceAsync,
+    IActivateAudioInterfaceAsyncOperation, IActivateAudioInterfaceCompletionHandler,
+    IActivateAudioInterfaceCompletionHandler_Impl, IAudioCaptureClient, IAudioClient,
+    IMMDeviceEnumerator, MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
+    AUDCLNT_STREAMFLAGS_LOOPBACK, DEVICE_STATE_ACTIVE, WAVEFORMATEX,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CLSCTX_ALL, COINIT_MULTITHREADED,
@@ -215,6 +215,198 @@ unsafe fn open_loopback(pid: u32) -> Result<Stream, CaptureError> {
         sample_rate: SAMPLE_RATE,
         float_samples: true,
     })
+}
+
+/// An active audio output endpoint.
+pub struct RenderDevice {
+    pub index: usize,
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// List active render endpoints.
+///
+/// A machine commonly has several — Speaker and Headphone on the same codec,
+/// for instance. An application can render to any of them, so "the default
+/// endpoint" is not the same thing as "where this app's audio is going".
+pub fn list_render_devices() -> Result<Vec<RenderDevice>, CaptureError> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+
+        let enumerator: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+                .map_err(|e| CaptureError::Platform(format!("MMDeviceEnumerator: {e}")))?;
+
+        let default_id = enumerator
+            .GetDefaultAudioEndpoint(eRender, eConsole)
+            .ok()
+            .and_then(|d| d.GetId().ok())
+            .map(|id| id.to_string().unwrap_or_default());
+
+        let collection = enumerator
+            .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+            .map_err(|e| CaptureError::Platform(format!("EnumAudioEndpoints: {e}")))?;
+
+        let count = collection
+            .GetCount()
+            .map_err(|e| CaptureError::Platform(format!("GetCount: {e}")))?;
+
+        let mut out = Vec::new();
+        for i in 0..count {
+            let device = match collection.Item(i) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let id = device
+                .GetId()
+                .ok()
+                .map(|s| s.to_string().unwrap_or_default())
+                .unwrap_or_default();
+
+            // Friendly names live behind a property store that needs an extra
+            // feature gate; the endpoint id is enough to tell them apart and
+            // is stable. The trailing GUID is the useful part.
+            let name = id
+                .rsplit('.')
+                .next()
+                .map(|g| format!("endpoint {i}  {g}"))
+                .unwrap_or_else(|| format!("endpoint {i}"));
+
+            out.push(RenderDevice {
+                index: i as usize,
+                name,
+                is_default: default_id.as_deref() == Some(id.as_str()),
+            });
+        }
+        Ok(out)
+    }
+}
+
+/// Open a loopback on one specific render endpoint, by index into
+/// `list_render_devices`.
+unsafe fn open_device_loopback(index: usize) -> Result<Stream, CaptureError> {
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            .map_err(|e| CaptureError::Platform(format!("MMDeviceEnumerator: {e}")))?;
+
+    let collection = enumerator
+        .EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)
+        .map_err(|e| CaptureError::Platform(format!("EnumAudioEndpoints: {e}")))?;
+
+    let device = collection
+        .Item(index as u32)
+        .map_err(|_| CaptureError::Platform(format!("no render endpoint at index {index}")))?;
+
+    let client: IAudioClient = device
+        .Activate(CLSCTX_ALL, None)
+        .map_err(|e| CaptureError::Platform(format!("endpoint Activate: {e}")))?;
+
+    let mix = client
+        .GetMixFormat()
+        .map_err(|e| CaptureError::Platform(format!("GetMixFormat: {e}")))?;
+
+    let channels = (*mix).nChannels;
+    let sample_rate = (*mix).nSamplesPerSec;
+    let bits = (*mix).wBitsPerSample;
+
+    let result = client.Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        200 * 10_000,
+        0,
+        mix,
+        None,
+    );
+
+    CoTaskMemFree(Some(mix as *const _));
+    result.map_err(|e| CaptureError::Platform(format!("endpoint Initialize: {e}")))?;
+
+    let capture: IAudioCaptureClient = client
+        .GetService()
+        .map_err(|e| CaptureError::Platform(format!("endpoint GetService: {e}")))?;
+
+    Ok(Stream {
+        client,
+        capture,
+        channels,
+        sample_rate,
+        float_samples: bits == 32,
+    })
+}
+
+/// Capture one specific render endpoint to WAV. Diagnostic.
+pub fn record_device_to_wav(
+    index: usize,
+    duration: Duration,
+    path: &str,
+) -> Result<CaptureStats, CaptureError> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let stream = open_device_loopback(index)?;
+        pump_to_wav(stream, duration, path)
+    }
+}
+
+/// Open a **system-wide** loopback on the default render endpoint.
+///
+/// Captures everything the machine plays, not one process. This exists to test
+/// whether Discord's voice is reachable at all: per-process loopback does not
+/// see communications-category streams, so if voice appears here but not there,
+/// the isolation requirement (R2) is unachievable on Windows for voice audio.
+unsafe fn open_system_loopback() -> Result<Stream, CaptureError> {
+    let enumerator: IMMDeviceEnumerator =
+        CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)
+            .map_err(|e| CaptureError::Platform(format!("MMDeviceEnumerator: {e}")))?;
+
+    let device = enumerator
+        .GetDefaultAudioEndpoint(eRender, eConsole)
+        .map_err(|_| CaptureError::Platform("no default render endpoint".into()))?;
+
+    let client: IAudioClient = device
+        .Activate(CLSCTX_ALL, None)
+        .map_err(|e| CaptureError::Platform(format!("render Activate: {e}")))?;
+
+    let mix = client
+        .GetMixFormat()
+        .map_err(|e| CaptureError::Platform(format!("GetMixFormat: {e}")))?;
+
+    let channels = (*mix).nChannels;
+    let sample_rate = (*mix).nSamplesPerSec;
+    let bits = (*mix).wBitsPerSample;
+
+    let result = client.Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        200 * 10_000,
+        0,
+        mix,
+        None,
+    );
+
+    CoTaskMemFree(Some(mix as *const _));
+    result.map_err(|e| CaptureError::Platform(format!("system loopback Initialize: {e}")))?;
+
+    let capture: IAudioCaptureClient = client
+        .GetService()
+        .map_err(|e| CaptureError::Platform(format!("system loopback GetService: {e}")))?;
+
+    Ok(Stream {
+        client,
+        capture,
+        channels,
+        sample_rate,
+        float_samples: bits == 32,
+    })
+}
+
+/// Capture the whole system output to WAV. Diagnostic only — see
+/// `open_system_loopback`.
+pub fn record_system_to_wav(duration: Duration, path: &str) -> Result<CaptureStats, CaptureError> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let stream = open_system_loopback()?;
+        pump_to_wav(stream, duration, path)
+    }
 }
 
 /// Open the default communications microphone.
@@ -464,7 +656,17 @@ pub fn record_to_wav(
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let stream = open_loopback(pid)?;
+        pump_to_wav(stream, duration, path)
+    }
+}
 
+/// Drain a stream to a WAV file for `duration`, reporting what it observed.
+unsafe fn pump_to_wav(
+    stream: Stream,
+    duration: Duration,
+    path: &str,
+) -> Result<CaptureStats, CaptureError> {
+    {
         let spec = hound::WavSpec {
             channels: stream.channels,
             sample_rate: stream.sample_rate,

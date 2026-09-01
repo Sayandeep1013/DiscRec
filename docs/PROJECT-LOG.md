@@ -230,6 +230,41 @@ in the recording. **R2 satisfied.**
 
 Timing is exact: 286,560 frames for a 6-second capture at 48 kHz.
 
+#### Discord voice capture confirmed — and a false alarm on the way
+
+Captured a live Discord call, 45 s, via process loopback on the root PID:
+peak 0.5581, mean -28.4 dB, and ~15.5 s of signal spread across six segments
+separated by 3.7-5.8 s gaps. That alternating pattern is two people talking with
+natural pauses. **Phase 1's exit criterion is met.**
+
+Getting there produced a wrong conclusion worth recording, because the failure
+mode will recur.
+
+Short test windows said voice was *not* captured. A 12 s run during continuous
+speech returned peak 0.0000 and 11.98 s of digital silence. Mute/unmute beeps
+captured fine at 0.7241. The obvious reading was that Windows excludes
+communications-category streams from process loopback -- the same protection
+that blocks Android -- which would have been product-ending.
+
+**That reading was wrong.** The captures started the instant the command ran,
+giving no time to read the instruction and get another person talking before the
+window closed. The tests were measuring empty windows, not a platform
+restriction. Lengthening the window to 45 s with no coordination required showed
+the voice plainly.
+
+Lesson: when a test needs a human to do something, the window has to be long
+enough that coordination is not part of the measurement. Two confident
+conclusions this session came from tooling artifacts rather than the system
+under test -- see also the `dlltool` diagnosis in ADR-0009.
+
+#### Endpoint enumeration added
+
+Investigating the false alarm revealed the machine has two active render
+endpoints (Speaker and Headphone on one Realtek codec), with Headphone as the
+Windows default. `--devices` lists them and `--device N` captures one, because
+"the default endpoint" is not necessarily where a given application's audio
+goes. Useful diagnostic, and the basis of any future output-device selection.
+
 #### Two bugs found and fixed during Phase 1
 
 1. **`AUDIOCLIENT_ACTIVATION_PARAMS` padding.** The struct is a 4-byte enum
