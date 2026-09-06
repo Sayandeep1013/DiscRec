@@ -60,6 +60,9 @@ struct Live {
     mic_ctx: *mut IoCtx,
 }
 
+// IOProc client pointers never leave this process; the session thread owns the backend.
+unsafe impl Send for CoreAudioBackend {}
+
 pub struct CoreAudioBackend {
     format: StreamFormat,
     live: Option<Live>,
@@ -515,7 +518,7 @@ fn to_cfstring(cstr: &'static CStr) -> CFRetained<CFString> {
 }
 
 fn yes_number() -> Retained<NSNumber> {
-    unsafe { NSNumber::initWithBool(NSNumber::alloc(), true) }
+    NSNumber::initWithBool(NSNumber::alloc(), true)
 }
 
 /// Same aggregate-device dictionary shape as cpal's loopback helper, but the

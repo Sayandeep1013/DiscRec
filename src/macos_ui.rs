@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{define_class, msg_send, sel, ClassType, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
     NSBezelStyle, NSButton, NSColor, NSFont, NSLevelIndicator, NSLevelIndicatorStyle, NSMenu,
@@ -204,7 +204,7 @@ define_class!(
 
 impl Delegate {
     fn new(mtm: MainThreadMarker) -> Retained<Self> {
-        let this = Self::alloc(mtm);
+        let this = Self::alloc(mtm).set_ivars(());
         unsafe { msg_send![super(this), init] }
     }
 }
@@ -264,12 +264,13 @@ fn button(
 ) -> Retained<NSButton> {
     let btn = unsafe {
         NSButton::buttonWithTitle_target_action(
-            &            NSString::from_str(title),
+            &NSString::from_str(title),
             Some(target.as_ref()),
             Some(action),
             mtm,
         )
     };
+    #[allow(deprecated)]
     btn.setBezelStyle(NSBezelStyle::Rounded);
     btn
 }
@@ -607,7 +608,7 @@ fn add_tray(app: &mut App) {
     }
     let mtm = MainThreadMarker::new().unwrap();
     let item = unsafe { NSStatusBar::systemStatusBar().statusItemWithLength(NSVariableStatusItemLength) };
-    if let Some(button) = item.button() {
+    if let Some(button) = item.button(mtm) {
         button.setTitle(ns_string!("● DiscRec"));
     }
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!(""));
@@ -639,7 +640,10 @@ fn update_tray(app: &App) {
     let Some(item) = app.tray.as_ref() else {
         return;
     };
-    if let Some(button) = item.button() {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return;
+    };
+    if let Some(button) = item.button(mtm) {
         if let Some(eng) = app.engine.as_ref() {
             let title = format!("● {}", fmt_elapsed(eng.meters.elapsed_ms()));
             button.setTitle(&NSString::from_str(&title));
@@ -654,7 +658,7 @@ fn change_folder(app: &mut App) {
     panel.setCanChooseDirectories(true);
     panel.setAllowsMultipleSelection(false);
     panel.setCanCreateDirectories(true);
-    panel.setTitle(ns_string!("Saving to"));
+    panel.setTitle(Some(ns_string!("Saving to")));
     if panel.runModal() != NSModalResponseOK {
         return;
     }

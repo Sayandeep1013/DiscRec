@@ -205,7 +205,7 @@ fn free_bytes_impl(path: &Path) -> Option<u64> {
     if err != 0 {
         return None;
     }
-    Some(st.f_bavail.saturating_mul(st.f_frsize as u64))
+    Some((st.f_bavail as u64).saturating_mul(st.f_frsize as u64))
 }
 
 #[cfg(not(any(windows, target_os = "macos")))]

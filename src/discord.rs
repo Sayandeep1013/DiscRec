@@ -140,14 +140,16 @@ fn macos_list() -> Vec<MacProc> {
 
 #[cfg(target_os = "macos")]
 unsafe fn macos_list_inner() -> Vec<MacProc> {
-    let bytes = libc::proc_listpids(libc::PROC_ALL_PIDS, 0, std::ptr::null_mut(), 0);
+    // Darwin's libproc.h. libc 0.2 does not always export PROC_ALL_PIDS.
+    const PROC_ALL_PIDS: u32 = 1;
+    let bytes = libc::proc_listpids(PROC_ALL_PIDS, 0, std::ptr::null_mut(), 0);
     if bytes <= 0 {
         return Vec::new();
     }
     let cap = bytes as usize / std::mem::size_of::<i32>();
     let mut pids = vec![0i32; cap];
     let wrote = libc::proc_listpids(
-        libc::PROC_ALL_PIDS,
+        PROC_ALL_PIDS,
         0,
         pids.as_mut_ptr().cast(),
         (pids.len() * std::mem::size_of::<i32>()) as i32,
