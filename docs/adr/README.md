@@ -19,3 +19,4 @@ the codebase.
 | [0007](0007-cross-platform-strategy.md) | What is shared vs duplicated across Windows/macOS | **Accepted** — native, resolved in Phase 1 |
 | [0008](0008-manual-control.md) | Manual control, no auto-start | **Accepted** — supersedes 0001 |
 | [0009](0009-gnu-toolchain-no-visual-studio.md) | GNU toolchain on Windows, no Visual Studio | Accepted |
+| [0010](0010-windows-native-shell.md) | Native Win32 shell; CLI retained | Accepted |

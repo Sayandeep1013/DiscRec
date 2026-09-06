@@ -5,10 +5,6 @@
 //!
 //! See `docs/spec/capture-interface.md` for the contract a backend must honor.
 
-// Scaffolding: the trait and its types are defined ahead of the code that
-// drives them. Remove this once Phase 1 wires capture into the recorder.
-#![allow(dead_code)]
-
 #[cfg(windows)]
 pub mod windows;
 
@@ -35,6 +31,11 @@ pub enum Source {
 pub struct Frame {
     pub source: Source,
     pub sample_pos: u64,
+    /// This stream's native channel count. The session converts to the mixer's
+    /// format; the mixer itself never sees a mismatch.
+    pub channels: u16,
+    /// This stream's native sample rate, Hz.
+    pub sample_rate: u32,
     pub samples: Vec<f32>,
 }
 

@@ -1,24 +1,28 @@
 # Handoff — start here
 
-**Written 2026-09-02, end of session 1.** Everything below is verified unless
+**Written 2026-09-06, end of session 2.** Everything below is verified unless
 it says otherwise.
 
 Two documents matter and they do different jobs:
 
 - **This file** — where the project is, how to run it, what to do next.
 - **[PROJECT-LOG.md](PROJECT-LOG.md)** — *why* things are the way they are. The
-  scope changed three times and several confident conclusions were wrong. Read
-  it before changing any decision, or you will re-litigate settled ground.
+    scope changed three times and several confident conclusions were wrong. Read
+    it before changing any decision, or you will re-litigate settled ground.
 
 ---
 
 ## 1. What exists right now
 
-A working Windows recorder, driven from the command line. It captures Discord's
-audio and your microphone, mixes them with clock-drift correction, and writes
-Ogg/Opus.
+A Windows app you can use. Open the binary, press Record, stop when you are
+done. It finds Discord, captures Discord's audio and your microphone, mixes
+them with clock-drift correction, and writes one Ogg/Opus file to
+`Documents\DiscRec\`.
 
-**Verified working:**
+The CLI harness is still there for soaks and crash tests: pass any argument
+and you get the old commands instead of the window.
+
+**Verified working (session 1, still true):**
 
 | | Evidence |
 |---|---|
@@ -29,10 +33,19 @@ Ogg/Opus.
 | Drift correction holds | Buffer 4796–4814 against 4800 target over 12 min, zero underruns/clamps |
 | Survives being killed | 25/25 kill cycles produced decodable files (R7) |
 | Opus output | Decodes clean under `ffmpeg -f null`. 0.38 MB vs 16.5 MB WAV |
-| Footprint | 24 MB resident, 0.68 MB release binary |
+| Footprint (engine) | 24 MB resident, 0.68 MB release binary |
 
-**Not built yet:** the app itself. There is no window, no record button, no
-tray. `src/main.rs` is a development harness, not the product.
+**Added this session (session 2):**
+
+- Native Win32 window: Record / Stop, live meters, first-run notice, recordings folder
+- Tray icon while recording (Stop / Show in folder)
+- Silent Discord capture after Record deletes the file and shows Retry (R8)
+- Output path `Documents\DiscRec\DiscRec-YYYY-MM-DD-HHMMSS.ogg`
+- 21 unit tests; `cargo clippy -- -D warnings` clean
+- → [ADR-0010](adr/0010-windows-native-shell.md)
+
+**Not done:** macOS. The 4-hour soak (R6) and a release CPU sample (R11) are
+still unrun measurements, not missing features.
 
 ---
 
@@ -75,23 +88,28 @@ crates are where this bites — Opus needed CMake, then a crate version bump.
 ```powershell
 cargo build --release
 
+# the product — a window, no flags
+cargo run --release
+
 # capture Discord only, 12 s, to capture.wav
 cargo run --release -- 12
 
-# both streams mixed to Ogg/Opus  <- the real path
+# both streams mixed to Ogg/Opus (cwd: mixed.ogg)  <- soak / crash-test path
 cargo run --release -- 45 --mix
 
 # add drift/buffer telemetry to soak.csv every 30 s
 cargo run --release -- 720 --mix --log
 
 # diagnostics
+cargo run --release -- --help
 cargo run --release -- --devices          # list output endpoints
 cargo run --release -- 10 --pid 1234      # capture an arbitrary process
 cargo run --release -- 10 --system        # whole-system loopback
 cargo run --release -- 20 --both          # per-stream stats, no mixing
 
 .\scripts\crash-test.ps1 -Runs 25         # R7
-cargo test                                # 15 unit tests
+.\scripts\soak.ps1                        # R6, four hours, needs Discord
+cargo test                                # 21 unit tests
 ```
 
 **Testing gotcha that cost real time:** any test needing a human to do something
@@ -109,31 +127,45 @@ Four parts. Only one is platform-specific.
 discord.rs      find Discord's ROOT pid (audio comes from a child;
                 INCLUDE_TARGET_PROCESS_TREE covers it)
     |
-capture/        <-- the ONLY platform-specific code
+capture/        <-- capture is platform-specific
   windows.rs    WASAPI process loopback + default mic, two threads,
                 two independent device clocks
   macos.rs      STUB. This is what a Mac contributor writes.
+    |
+session.rs      preview meters; on Record, mix + write. Enforces R8.
     |
 mixer.rs        Discord is timeline master; mic is resampled to match.
                 PI controller steered by buffer depth. Soft-knee limiter.
     |
 writer.rs       Opus encode, Ogg pages straight to the OS (no BufWriter,
                 so a kill cannot lose buffered audio)
+    |
+ui.rs           Win32 GDI window + tray. Windows-only this cut (ADR-0010).
 ```
 
-A `#[cfg]` anywhere outside `src/capture/` is a design smell.
+A `#[cfg]` anywhere outside `src/capture/` is a design smell. `ui.rs` is the
+known exception until a Mac shell exists.
 
 ---
 
 ## 5. What to do next, in order
 
-### 5.1 Finish Phase 2 — the 4-hour soak (R6)
-
-The only remaining gate. Everything is in place; it needs uninterrupted hours
-with Discord open, which was not available this session.
+### 5.1 Use it
 
 ```powershell
-cargo run --release -- 14400 --mix --log
+cargo run --release
+```
+
+Start Discord, join a call, press Record. Files land in `Documents\DiscRec\`.
+First launch shows the recording notice once.
+
+### 5.2 Finish Phase 2 — the 4-hour soak (R6)
+
+Still the integrity gate. Needs uninterrupted hours with Discord open.
+
+```powershell
+.\scripts\soak.ps1
+# or: cargo run --release -- 14400 --mix --log
 ```
 
 Pass condition is **not** a small offset — it is **no monotonic trend** in
@@ -146,23 +178,17 @@ regression across a branch switch reported 19 ppm of drift that did not exist.
 Best evidence so far: 12 minutes, buffer 4796–4814 against 4800, integral
 bounded, no faults. Strong, but not four hours.
 
-### 5.2 Measure CPU on a release build
+### 5.3 Measure CPU on a release build
 
 **Outstanding and unverified.** The only CPU figure taken was 8.29% on a *debug*
-build against a 3% budget (R11) — not a fair reading, and both release runs
-exited before being sampled. Sample `TotalProcessorTime` while a release soak
-is running. If it genuinely exceeds 3%, the likely cause is the 4 ms polling
-loop in `pump`; the fix is event-driven capture via
-`AUDCLNT_STREAMFLAGS_EVENTCALLBACK`.
+build against a 3% budget (R11) — not a fair reading. Sample
+`TotalProcessorTime` while a release soak (or a long GUI recording) is running.
+If it genuinely exceeds 3%, the likely cause is the 4 ms polling loop in
+`pump`; the fix is event-driven capture via `AUDCLNT_STREAMFLAGS_EVENTCALLBACK`.
 
-### 5.3 Build the actual app (Phase 3)
-
-Window, record button, level meters, tray indicator, first-run notice.
-→ [spec/desktop-shell.md](spec/desktop-shell.md)
-
-Exit criterion is a person recording a call within 10 seconds of first launch,
-unassisted (R13). Keep it native — Electron fails the footprint requirements on
-its own.
+Re-check resident memory with the window open. The engine was 24 MB; the GDI
+shell should stay well under the 40 MB cap (R10). egui/wgpu was rejected
+because it would not.
 
 ### 5.4 macOS (Phase 4)
 
@@ -170,7 +196,8 @@ Needs Mac hardware, which this machine does not have.
 [spec/capture-macos.md](spec/capture-macos.md) is written from Apple's docs and
 is **unverified**. Point a contributor at
 [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md); their first job is answering
-five open questions, not writing code.
+five open questions, not writing code. They will also need a windowing backend
+— the current `ui.rs` is Win32 (ADR-0010).
 
 ---
 

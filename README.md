@@ -5,8 +5,8 @@ Discord and captures the call. Press stop, you get a file.
 
 Not a background service. Not a bot. Not a scene collection.
 
-**Status: specification. Implementation starting.**
-**Targets: Windows and macOS.**
+**Status: Windows app. Open it and press Record.**
+**Targets: Windows now; macOS later.**
 
 ---
 
@@ -60,9 +60,15 @@ and nothing else — two files behind one trait, selected at compile time.
 cargo build --release      # builds for whatever OS you are on
 ```
 
-Windows needs the MSVC toolchain; macOS needs Xcode Command Line Tools and
+Windows needs the GNU toolchain on this machine (nothing on `C:`);
+see [docs/HANDOFF.md](docs/HANDOFF.md). macOS needs Xcode Command Line Tools and
 macOS 14.2+. Full setup for macOS contributors is in
 [docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md).
+
+```powershell
+cargo run --release          # the app
+cargo run --release -- --help
+```
 
 ## Recording other people
 

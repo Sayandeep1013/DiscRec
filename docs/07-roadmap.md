@@ -57,9 +57,9 @@ Window with record/stop, elapsed time, live level meters, tray indicator, and
 show-in-folder. First-run reminder about telling people
 ([06-legal-and-consent.md](06-legal-and-consent.md)).
 
-**Exit:** a person who has never seen it records a call within 10 seconds of
-first launch, unassisted (R13). Footprint measured under 40 MB and 3% CPU
-(R10, R11).
+**Windows: built 2026-09-06** (ADR-0010). Exit criterion R13 (stranger records
+in 10 seconds) is not yet timed with a fresh user. Footprint with the window
+open is not yet re-sampled against R10/R11.
 
 ---
 

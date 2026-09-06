@@ -521,6 +521,8 @@ unsafe fn pump(stream: Stream, source: Source, sink: FrameSink, stop: Arc<Atomic
             .send(Frame {
                 source,
                 sample_pos,
+                channels: stream.channels,
+                sample_rate: stream.sample_rate,
                 samples,
             })
             .is_err()

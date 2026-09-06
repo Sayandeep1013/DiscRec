@@ -5,7 +5,7 @@ context that is not recoverable from the code or the commit history: why the
 scope changed three times, what was researched and rejected, and which
 conclusions were reversed.
 
-Last updated: 2026-09-01, end of Phase 1.
+Last updated: 2026-09-06, end of Phase 3 on Windows (app window).
 
 ---
 
@@ -363,15 +363,10 @@ capture path, and almost certainly untested on the GNU toolchain. `windows`
 natively too, so a shared crate would only have paid off if it worked well on
 both.
 
-### Next — Phase 2
+### Next — remaining measurements, then macOS
 
-Add the microphone as a second stream, drift compensation between the two
-clocks, the limiter, Opus encoding, and incremental crash-safe writes. Refactor
-`record_to_wav`'s inner loop to drive the `CaptureBackend` trait instead of a
-WAV writer.
-
-Exit criterion is the 4-hour soak: alignment within 50 ms **with no monotonic
-trend**, plus `SIGKILL` at 100 random offsets leaving playable files.
+The Windows app exists. Still unrun: the 4-hour soak (R6) and a release CPU
+sample (R11). macOS is Phase 4 and needs hardware this machine does not have.
 
 ---
 
