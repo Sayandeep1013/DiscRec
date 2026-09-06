@@ -2,7 +2,7 @@
 name = "discrec"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 description = "Records Discord's audio. Press record."
 license = "MIT"
 repository = "https://github.com/Sayandeep1013/DiscRec"
@@ -19,7 +19,7 @@ opus = "0.4"
 ogg = "0.9"
 
 [target.'cfg(windows)'.dependencies]
-# Bindings generated from Windows metadata, not SDK headers â€” this is what
+# Bindings generated from Windows metadata, not SDK headers — this is what
 # lets the GNU toolchain reach the process-loopback APIs. See ADR-0009.
 windows-core = "0.62"
 
@@ -45,6 +45,15 @@ features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ]
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+objc2 = "0.6.2"
+objc2-foundation = "0.3.2"
+objc2-app-kit = "0.3.2"
+objc2-core-audio = "0.3.2"
+objc2-core-audio-types = "0.3.2"
+objc2-core-foundation = "0.3.2"
 
 [profile.release]
 opt-level = "z"

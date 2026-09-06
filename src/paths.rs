@@ -79,15 +79,25 @@ pub enum DiskStatus {
 }
 
 fn downloads_dir() -> PathBuf {
+    #[cfg(windows)]
     if let Ok(p) = std::env::var("USERPROFILE") {
+        return PathBuf::from(p).join("Downloads");
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(p) = std::env::var("HOME") {
         return PathBuf::from(p).join("Downloads");
     }
     PathBuf::from(".")
 }
 
 fn appdata_dir() -> PathBuf {
+    #[cfg(windows)]
     if let Ok(p) = std::env::var("APPDATA") {
         return PathBuf::from(p);
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(p) = std::env::var("HOME") {
+        return PathBuf::from(p).join("Library").join("Application Support");
     }
     PathBuf::from(".")
 }
@@ -130,7 +140,26 @@ fn timestamp_stamp() -> String {
             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond
         )
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        unsafe {
+            let t = libc::time(std::ptr::null_mut());
+            let mut tm = std::mem::zeroed::<libc::tm>();
+            if libc::localtime_r(&t, &mut tm).is_null() {
+                return format!("{t}");
+            }
+            format!(
+                "{:04}-{:02}-{:02}-{:02}{:02}{:02}",
+                tm.tm_year + 1900,
+                tm.tm_mon + 1,
+                tm.tm_mday,
+                tm.tm_hour,
+                tm.tm_min,
+                tm.tm_sec
+            )
+        }
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         use std::time::{SystemTime, UNIX_EPOCH};
         let secs = SystemTime::now()
@@ -161,7 +190,25 @@ fn free_bytes_impl(path: &Path) -> Option<u64> {
     Some(free)
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+fn free_bytes_impl(path: &Path) -> Option<u64> {
+    let probe = if path.exists() {
+        path.to_path_buf()
+    } else {
+        path.parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    };
+    let c = std::ffi::CString::new(probe.to_string_lossy().as_bytes()).ok()?;
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    let err = unsafe { libc::statvfs(c.as_ptr(), &mut st) };
+    if err != 0 {
+        return None;
+    }
+    Some(st.f_bavail.saturating_mul(st.f_frsize as u64))
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 fn free_bytes_impl(_path: &Path) -> Option<u64> {
     None
 }

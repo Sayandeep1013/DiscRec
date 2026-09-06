@@ -13,3 +13,7 @@ pub mod writer;
 
 #[cfg(windows)]
 pub mod ui;
+
+#[cfg(target_os = "macos")]
+#[path = "macos_ui.rs"]
+pub mod ui;

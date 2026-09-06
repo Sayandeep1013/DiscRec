@@ -26,11 +26,16 @@ fn main() {
         std::process::exit(1);
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    if let Err(e) = discrec::ui::run() {
+        eprintln!("DiscRec failed to open: {e}");
+        std::process::exit(1);
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         eprintln!(
-            "The DiscRec window is Windows-only in this build. Pass CLI flags (see --help) \
-             or see docs/CONTRIBUTING-macos.md."
+            "DiscRec targets Windows and macOS. See docs/CONTRIBUTING-macos.md."
         );
         std::process::exit(1);
     }

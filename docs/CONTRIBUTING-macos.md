@@ -1,129 +1,208 @@
-# Setting up the macOS side
+# Building DiscRec on a Mac
 
-You are reading this because you have a Mac and the rest of the project does
-not. **Everything except one file already works.** Your job is
-`src/capture/macos.rs` — one file, behind a trait that already exists.
+This is the Mac counterpart of the Windows app. The capture backend, Discord
+process finder, AppKit window, bundle, and signing steps are **already in this
+repository**. You are not being asked to design them.
 
-No fork, no separate branch, no parallel build. Clone, build, implement, push.
-
----
-
-## What you need
-
-| Requirement | Notes |
-|---|---|
-| **macOS 14.2 minimum, 14.4+ strongly preferred** | Core Audio process taps do not exist below 14.2. Check: `sw_vers -productVersion` |
-| **Rust** | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
-| **Xcode Command Line Tools** | `xcode-select --install`. The full Xcode app is not required |
-| **Discord** | Any client. Have a friend on a call, or a second account, to make real audio |
-| Apple Developer account (~$99/yr) | **Only for distribution.** Not needed to build or test locally. Ignore until it matters |
-
-Nothing else. The Windows side uses Rust's GNU toolchain to avoid Visual Studio
-([ADR-0009](adr/0009-gnu-toolchain-no-visual-studio.md)); that decision does not
-affect you at all — macOS builds with clang from the Command Line Tools.
-
-## Getting started
+On a Mac that meets the requirements below, this is the whole job:
 
 ```bash
 git clone https://github.com/Sayandeep1013/DiscRec.git
 cd DiscRec
-cargo build
+bash scripts/macos/run.sh
 ```
 
-It will compile. `src/capture/macos.rs` is a stub returning
-`CaptureError::Platform("not implemented")`, so the app runs and the window
-opens — it just cannot record yet. Everything around it is done.
+That builds a release binary, wraps it in `dist/DiscRec.app`, ad-hoc signs it
+(required for permission prompts), and opens it. Start Discord, join a call,
+press Record, stop. The file lands in `~/Downloads/DiscRec/`.
 
-## Read these three, in order
+If `run.sh` fails, use the troubleshooting section. Do not invent a different
+capture API.
 
-1. **[spec/capture-interface.md](spec/capture-interface.md)** — the trait you
-   implement and the five rules a backend must honor. Start here.
-2. **[spec/capture-macos.md](spec/capture-macos.md)** — the mechanism, written
-   from Apple's docs. **It is unverified.** Nobody has run it. Where reality
-   disagrees with it, reality wins and the spec gets corrected.
-3. **[spec/mixing-and-timeline.md](spec/mixing-and-timeline.md)** — why
-   `sample_pos` must come from the device's own counter. This is the one thing
-   that is genuinely easy to get wrong and impossible to fix later.
+---
 
-## Before writing much code: answer five questions
+## 1. Machine
 
-The spec has open unknowns that only hardware can settle. Answering them is
-worth more than a partial implementation, because two of them could change the
-design.
+| Need | How to check | If it fails |
+|---|---|---|
+| macOS **14.2** or later (14.4+ nicer) | `sw_vers -productVersion` | The app will refuse to start capture with a clear error. Upgrade macOS. |
+| Apple Silicon or Intel | either is fine; the script builds the native arch | Do not add a universal binary unless you have a reason. |
+| Xcode Command Line Tools | `xcode-select -p` | `xcode-select --install` |
+| Rust (stable, **1.85+**) | `rustc -V` | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` then open a new terminal |
+| Discord desktop | — | Any client: stable, Canary, or PTB |
 
-1. **Do tapped streams arrive attenuated?** There is an open Apple developer
-   thread about per-device attenuation and getting unattenuated app audio. If
-   levels come through wrong, everything downstream is wrong. **Highest
-   priority.**
-2. Does a tap survive Discord restarting, or must it be rebuilt?
-3. What happens if the tap is created while Discord is not running?
-4. Can an aggregate device hold both the tap and the microphone with drift
-   compensation (`kAudioSubTapDriftCompensationKey`) actually working? If yes,
-   macOS gets for free the hardest problem Windows has to solve by hand.
-5. How does sample-rate negotiation behave if the aggregate disagrees with
-   48 kHz?
+An Apple Developer account is **not** required to build, run, or record on this
+Mac. It is only needed later if you want to give the `.app` to someone else
+(notarization). Skip it.
 
-Write the answers into `spec/capture-macos.md` and open a PR with just that.
-That alone is a genuinely useful contribution.
+Do not enable App Sandbox. Process taps do not work in the sandbox.
 
-## The reference implementation
+The Windows GNU-toolchain notes in `HANDOFF.md` do not apply. macOS uses clang
+from the Command Line Tools.
 
-[AudioCap](https://github.com/insidegui/AudioCap) is the community reference for
-process taps, and exists because Apple's own documentation is thin. Read it
-before fighting the API. It is Swift; the Core Audio calls translate directly.
+---
 
-## The one rule that matters most
+## 2. What this repo already contains
 
-**Never report success for a stream that carries no audio.**
+| Path | Role |
+|---|---|
+| `src/capture/macos.rs` | Core Audio process tap (Discord) + default microphone |
+| `src/discord.rs` | Finds Discord's **root** PID and the helper tree |
+| `src/macos_ui.rs` | AppKit window: Record, meters, folder, tray while recording |
+| `src/session.rs`, `mixer.rs`, `writer.rs` | Shared with Windows. Do not rewrite. |
+| `macos/Info.plist` | Bundle id `com.discrec.app`, mic + system-audio usage strings |
+| `macos/DiscRec.entitlements` | Microphone only. **No** `app-sandbox`. |
+| `scripts/macos/run.sh` | Build, bundle, ad-hoc sign, launch |
 
-Both platforms can hand back a healthy-looking stream that delivers digital
-silence — wrong process, or a permission granted in the dialog but not in
-effect. Measure RMS over the first ~3 seconds and return `CaptureError::NoSignal`
-if it is pure silence.
+The window is **not** Win32. `src/ui.rs` is Windows-only. On Mac, `lib.rs`
+loads `macos_ui.rs` as the `ui` module.
 
-The alternative is someone discovering next week that an hour-long recording is
-empty. → [05-challenges.md](05-challenges.md#p2)
+---
 
-## Permissions while developing
+## 3. How capture works (so you do not "fix" it into a system recorder)
 
-macOS will prompt for audio capture the first time you run it. If you dismiss
-it, you get silence rather than an error — which is exactly the failure above.
+Windows attaches to a PID with WASAPI process-tree loopback. macOS has no PID
+loopback flag. The equivalent is:
+
+1. Find Discord's root process (`Discord`, `Discord Canary`, or `Discord PTB`).
+   Helpers are named `Discord Helper…` and are **children**. Audio is rendered
+   by a child. Targeting only the root captures silence.
+2. Collect every PID in that tree (`discord::descendant_pids`).
+3. Translate each PID to a Core Audio process object
+   (`kAudioHardwarePropertyTranslatePIDToProcessObject`). Retry for ~2 seconds
+   if Discord has not registered with `coreaudiod` yet.
+4. `CATapDescription::initStereoMixdownOfProcesses(those objects)`.
+   `isPrivate = true`, `muteBehavior = Unmuted` (the user still hears the call),
+   `processRestoreEnabled = true`.
+5. **Never** `initStereoGlobalTapButExcludeProcesses([])` or `setExclusive(true)`
+   with an empty process list. That is what `cpal`'s loopback does. It records
+   **every app** and fails requirement R2 (music and games in the file).
+6. Wrap the tap in a **private** aggregate device (`TapAutoStart`, tap UID in
+   `TapList`). Wait until `kAudioDevicePropertyDeviceIsAlive` is set — starting
+   IO before that yields digital silence with no error.
+7. IOProc on the aggregate → `Frame { source: DiscordOutput, sample_pos from
+   mSampleTime, … }` on the session channel. Do not block the IOProc on encode
+   or disk.
+8. Microphone is a **second** stream on the default input device. The existing
+   mixer resamples it to Discord's clock. Do not stall the Mac port on
+   aggregate drift-compensation experiments.
+
+Quiet calls are valid recordings. Digital silence because the tap never
+attached, or because TCC was denied, is not. There is no reliable API to query
+system-audio TCC; a denied prompt looks like silence. The UI has **Open
+Settings** when the error looks like a permission failure. Reset with:
 
 ```bash
-tccutil reset Microphone            # re-trigger the prompts while testing
-tccutil reset AudioCapture
+tccutil reset AudioCapture com.discrec.app
+tccutil reset Microphone com.discrec.app
 ```
 
-Add `NSAudioCaptureUsageDescription` and a microphone usage string to
-`Info.plist`, or the prompt never appears at all.
+Then launch `dist/DiscRec.app` again (not a raw `cargo run` binary — TCC is per
+bundle id).
 
-## Testing your work
+---
+
+## 4. Commands
 
 ```bash
-cargo test                       # timeline and mixer tests, platform-neutral
-cargo run                        # the actual app
+bash scripts/macos/run.sh          # the product
+cargo test                         # shared mixer/writer tests
+cargo run --release -- 30 --mix    # CLI, no window; writes mixed.ogg in cwd
 ```
 
-Then, in order:
+`cargo run` without flags also opens the window, but **permission prompts for
+an unsigned cargo binary are flaky**. Use the bundled app for real recordings.
 
-1. Record 30 seconds of a Discord call. Confirm you can hear both sides.
-2. Play music while recording. **It must not be in the file** — that is
-   requirement R2 and the whole reason for per-process capture.
-3. Kill the app mid-recording. The file must still play (R7).
-4. Check levels are not attenuated or clipped against the source.
+WAV (`discrec 12` with no `--mix`) is Windows-only. On Mac always use `--mix`.
 
-The full matrix is in [spec/test-plan.md](spec/test-plan.md). The four-hour
-drift soak is the one that actually gates the build; do it once the basics work.
+---
 
-## Signing and notarization — later
+## 5. First-run checklist (human, two minutes)
 
-Only needed to give the app to someone who is not you. Building and running
-locally needs none of it. When it becomes relevant:
-hardened runtime, sign, notarize, staple. Budget real time — it is usually more
-work than the capture code.
+1. `bash scripts/macos/run.sh`
+2. Allow **Microphone** when asked.
+3. Allow **System Audio Recording** / audio capture when asked.
+4. Start Discord, join a voice channel, press Record, talk, stop.
+5. Open folder — file is `~/Downloads/DiscRec/DiscRec-YYYY-MM-DD-HHMMSS.ogg`
+6. Play it. Both sides should be there.
+7. Play music on the Mac while recording a second clip. **The music must not
+   be in the file.** If it is, the tap was created as a global tap; stop and
+   fix `src/capture/macos.rs` — do not ship that.
 
-## If you get stuck
+If you dismissed a prompt: reset TCC as above, then run the **.app** again.
 
-Open an issue with what you tried and what happened. `spec/capture-macos.md` was
-written without a Mac, so if it is wrong, that is expected — say so and it gets
-fixed. Corrections to that file are as valuable as code.
+---
+
+## 6. If something does not compile
+
+The Mac code was written against `objc2` 0.6 / `objc2-core-audio` 0.3 from
+Windows and compiled in GitHub Actions (`macos-15`). Apple and the crates
+move. If a name changed:
+
+- Keep the **behaviour** in section 3.
+- Update only the symbol (`initStereoMixdownOfProcesses`, dictionary keys,
+  `AudioDeviceCreateIOProcID`, AppKit `define_class!` syntax).
+- Do not switch to ScreenCaptureKit, a Swift sidecar, `cpal` loopback, or
+  `flexaudio`.
+- Do not rewrite the mixer.
+
+Useful references (read, do not copy their global-tap path):
+
+- Apple: [Capturing system audio with Core Audio taps](https://developer.apple.com/documentation/coreaudio/capturing-system-audio-with-core-audio-taps)
+- `CATapDescription::initStereoMixdownOfProcesses` in `objc2-core-audio`
+- [AudioCap](https://github.com/insidegui/AudioCap) (Swift; aggregate-device step)
+- cpal `loopback.rs` — **wrong process list** (exclusive + empty). Steal only
+  the aggregate-device dictionary shape.
+
+---
+
+## 7. Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `run.sh`: needs 14.2 | Old OS | Upgrade |
+| `dlltool` / GNU notes | Those are Windows | Ignore `HANDOFF.md` toolchain pages |
+| App opens, Record does nothing useful, "Start Discord first." | Finder used a helper PID, or Discord not running | Start the **Discord** app, not a browser tab. Check Activity Monitor for `Discord`. |
+| "no process object yet" | Discord has no Core Audio client yet | Join a voice channel, wait a second, Record again. |
+| File exists, both sides missing / digital silence | TCC denied, or aggregate started before alive | Reset TCC, run the `.app`. Confirm `wait_until_alive` still exists in `macos.rs`. |
+| Music/game in the file | Global tap | You used exclusive+empty. Revert to `initStereoMixdownOfProcesses`. |
+| User cannot hear Discord while recording | Tap muted the process | `muteBehavior` must stay `Unmuted`. |
+| Prompt never appears | Running unsigned `target/release/discrec` | Use `dist/DiscRec.app`. `Info.plist` must contain both usage strings. |
+| `codesign` errors about sandbox | Entitlements gained `app-sandbox` | Remove it. |
+| Mic missing, Discord present | Default input | Check System Settings → Sound → Input. |
+| Window never appears | Not on main thread / no `NSApplication` | `macos_ui.rs` must call `NSApplication::run` on the main thread. |
+
+---
+
+## 8. Optional: give the app to someone else
+
+Local ad-hoc signing (`codesign --sign -`) is enough on **this** Mac. To mail
+the `.app` to another person you need an Apple Developer account (~$99/yr):
+
+1. Hardened runtime: `codesign --options runtime --entitlements macos/DiscRec.entitlements --sign "Developer ID Application: …" dist/DiscRec.app`
+2. Notarize: `xcrun notarytool submit …`
+3. Staple: `xcrun stapler staple dist/DiscRec.app`
+
+Do not start this until local recording already works. It is unrelated to
+capture quality.
+
+---
+
+## 9. Decisions already made — do not relitigate
+
+- Manual Record/Stop only ([ADR-0008](adr/0008-manual-control.md)).
+- Native Core Audio taps, not Tauri, not Electron, not cpal loopback
+  ([ADR-0007](adr/0007-cross-platform-strategy.md)).
+- Native AppKit window, not egui/Slint ([ADR-0010](adr/0010-windows-native-shell.md)
+  is Windows-specific; Mac mirrors the **product**, not Win32).
+- One Ogg/Opus file. Mixer and writer stay shared.
+- Quiet Discord is a valid recording. Wrong process / denied TCC is not.
+- No bot, no auto-start, no mobile.
+
+---
+
+## 10. After it works
+
+Push the branch. If you had to change a crate API, update this file and
+`docs/spec/capture-macos.md` with what the hardware actually did (attenuation,
+tap-on-restart). Those notes are useful; a second capture stack is not.

@@ -28,7 +28,7 @@ Written Sept 2026. Platform API and library claims have a shelf life; see
 | [06-legal-and-consent.md](06-legal-and-consent.md) | Recording other people |
 | [07-roadmap.md](07-roadmap.md) | Phases with exit criteria |
 | [08-toolchain-and-gaps.md](08-toolchain-and-gaps.md) | What's installed, missing, and unverifiable |
-| [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md) | **Onboarding for the macOS contributor** |
+| [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md) | **Build and run the Mac app** |
 
 ## Decisions — `adr/`
 

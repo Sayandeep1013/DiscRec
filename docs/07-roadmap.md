@@ -68,16 +68,13 @@ open is not yet re-sampled against R10/R11.
 Core Audio process taps behind the same trait, then signing and notarization.
 Expect notarization to be most of it ([P3](05-challenges.md#p3)).
 
-**Cannot be started from the primary development machine** — it needs Mac
-hardware and an Apple Developer account, and
-[spec/capture-macos.md](spec/capture-macos.md) is written from documentation
-rather than experience.
+**Cannot be finished without Mac hardware**, but the code is in the tree:
+`src/capture/macos.rs`, `src/macos_ui.rs`, `scripts/macos/run.sh`.
+Onboarding is [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md).
 
-→ [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md) is the onboarding for whoever
-does this.
-
-**Exit:** clean-VM run on macOS produces a valid recording with correct levels,
-and a denied permission produces a clear blocked state rather than a silent file.
+**Exit:** `bash scripts/macos/run.sh` on macOS 14.2+ produces a valid recording
+with both sides, music playing on the Mac is absent, and a denied permission
+produces a blocked state rather than a silent file.
 
 ---
 

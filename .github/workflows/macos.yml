@@ -1,0 +1,25 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build and test on macOS 15
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Toolchain
+        run: rustc -V && cargo -V && sw_vers
+      - name: Test
+        run: cargo test
+      - name: Release binary
+        run: cargo build --release
+      - name: Bundle and ad-hoc sign
+        run: bash scripts/macos/run.sh
+        env:
+          # run.sh calls `open`; skip launching in CI
+          SKIP_OPEN: "1"

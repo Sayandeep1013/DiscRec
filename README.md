@@ -5,8 +5,7 @@ finds Discord and captures the call. Press stop, you get one file.
 
 Not a background service. Not a bot. Not a scene collection.
 
-**Windows is ready.** Download the exe from
-[Releases](https://github.com/Sayandeep1013/DiscRec/releases). macOS is next.
+**Status: Windows app (download the exe). macOS: clone and `bash scripts/macos/run.sh`.**
 
 ---
 
@@ -63,10 +62,16 @@ cargo test
 Pass any argument and you get the development harness instead of the window
 (`discrec --help`). That path is how soaks and crash tests run.
 
-Windows contributors on this repo's unusual GNU toolchain: start at
-[docs/HANDOFF.md](docs/HANDOFF.md). macOS contributors: start at
-[docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md) — capture is a stub
-until that work lands, and there is no Mac window yet.
+Windows contributors on this machine's GNU toolchain: start at
+[docs/HANDOFF.md](docs/HANDOFF.md).
+
+**Mac:** the app is in the tree. On macOS 14.2+:
+
+```bash
+bash scripts/macos/run.sh
+```
+
+Full playbook: [docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md).
 
 ## How it's built
 
@@ -96,8 +101,8 @@ are what they are.
 
 | | |
 |---|---|
-| Windows app | Works. Open, press Record. |
-| macOS | Not built. Needs a Mac. |
+| Windows app | Works. Download from Releases. |
+| macOS | Code is in the repo. Build with `bash scripts/macos/run.sh` on macOS 14.2+. |
 | 4-hour drift soak (R6) | Outstanding measurement, not a missing feature |
 | Release CPU vs 3% (R11) | Same |
 

@@ -3,85 +3,76 @@
 Implements [capture-interface.md](capture-interface.md). Satisfies R1, R2, R3,
 R8. Target: macOS 14.2+, 14.4+ preferred.
 
-> **Status: unverified.** Written from Apple's documentation and the AudioCap
-> open-source reference, without access to Mac hardware. Nothing here has been
-> compiled or run. Treat it as a starting point and expect to revise it.
-> → [../CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md)
+Implementation: `src/capture/macos.rs`. How to build and run:
+[CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md).
+
+> Written from Apple's documentation, AudioCap, cpal's aggregate-device
+> dictionary, and `objc2-core-audio` 0.3. First hardware proof is the Mac
+> contributor's job; the **design is decided**. If a crate symbol moved, rename
+> it. Do not change the behaviour below.
 
 ## Discord capture — process taps
 
-A Core Audio process tap copies the audio a chosen process renders while it
-continues playing normally. Before macOS 14.2 this required a virtual audio
-driver or kernel extension, neither compatible with R12.
-
 ```
-Discord PID ──▶ AudioObjectID
+Discord root PID
+    descendant_pids (helpers included — audio is rendered by a child)
         ▼
-CATapDescription(processes: [discordObjectID])
-   .isPrivate    = true      // keep it out of other apps' device lists
-   .muteBehavior = .unmuted  // audio keeps reaching the user
+kAudioHardwarePropertyTranslatePIDToProcessObject  (retry ~2 s)
         ▼
-AudioHardwareCreateProcessTap(desc, &tapID)
+CATapDescription::initStereoMixdownOfProcesses(ids)
+   .isPrivate              = true
+   .muteBehavior           = Unmuted
+   .processRestoreEnabled  = true
         ▼
-aggregate device dictionary including the tap UUID in its tap list
+AudioHardwareCreateProcessTap
         ▼
-AudioHardwareCreateAggregateDevice(dict, &aggregateID)
+private aggregate (tap UID in TapList, TapAutoStart, IsPrivate)
         ▼
-IO proc  ──▶  Frame { source: DiscordOutput, … }
+wait kAudioDevicePropertyDeviceIsAlive
+        ▼
+IOProc  →  Frame { source: DiscordOutput, sample_pos from mSampleTime, … }
 ```
 
-**Pass Discord's process explicitly.** A tap created with an empty process list
-and `setExclusive(true)` records *everything* — that is system-wide capture and
-fails R2. This is exactly what `cpal`'s built-in loopback does, and why it
-cannot be used as-is ([ADR-0007](../adr/0007-cross-platform-strategy.md)).
+**Pass Discord's process objects explicitly.** A tap created with an empty
+process list and `setExclusive(true)` records *everything* — that fails R2.
+That is what `cpal`'s loopback does; do not copy it.
 
-The aggregate-device step is under-documented and is where implementations
-usually stall; AudioCap exists precisely because of that.
-→ [../research/platform-audio-apis.md](../research/platform-audio-apis.md)
+If Core Audio has no process object after 2 seconds, return a platform error
+telling the user to join a voice channel. Do not fall back to a global tap.
 
 ## Microphone
 
-Captured separately via the default input device. Worth attempting to include
-both the tap and the input in **one aggregate device with drift compensation
-enabled** (`kAudioSubTapDriftCompensationKey`) — if that works, Core Audio
-handles much of [P1](../05-challenges.md#p1) for free, which Windows cannot.
-
-Measure and log residual drift regardless. Do not assume it is zero.
+Default input device, **second** IOProc, `Source::Microphone`. The shared mixer
+corrects drift. Do not block shipping on putting mic + tap in one aggregate
+with `kAudioSubTapDriftCompensationKey`. Measuring residual drift is fine;
+changing the architecture to wait on it is not.
 
 ## Permissions ([P3](../05-challenges.md#p3))
 
-Gated by TCC under `kTCCServiceAudioCapture`.
+- `NSAudioCaptureUsageDescription` and `NSMicrophoneUsageDescription` in
+  `macos/Info.plist`.
+- Bundle id `com.discrec.app`. TCC follows the **.app**, not `cargo run`.
+- Denial: `PermissionDenied` when the HAL returns paramErr / equivalent; the
+  shell shows **Open Settings**. There is no reliable query API for
+  system-audio TCC. A denied prompt looks like silence — reset with
+  `tccutil reset AudioCapture com.discrec.app`.
+- Quiet calls are valid. Do not treat "nobody is speaking" as `NoSignal`.
 
-- `NSAudioCaptureUsageDescription` in `Info.plist`, and a microphone usage
-  string for the input.
-- Trigger the prompt at first launch and **verify real signal then**, not at
-  first recording.
-- Denial returns `PermissionDenied`, which the shell surfaces with a link to the
-  settings pane — never a silent recording
-  ([desktop-shell.md](desktop-shell.md)).
+## Signing
 
-## Signing and notarization
-
-A work item, not a build step: Apple Developer account, hardened runtime,
-signing, notarization, stapling. An unsigned binary requesting audio capture
-will not run for a normal user. Budget most of Phase 4 for this.
+Ad-hoc (`codesign --sign -`) is required for local TCC. Notarization is only
+for giving the app to someone else. The app **must not** be sandboxed.
 
 ## Device changes (R5)
 
-Observe `kAudioHardwarePropertyDefaultOutputDevice` and device lifecycle
-notifications. Rebuild the tap and aggregate device, resume into the same
-recording.
+SHOULD, not MUST for the first Mac cut. If the default output changes,
+rebuilding the tap is a follow-up. Do not hold Record for it.
 
-## Known unknowns
+## Hardware notes to fill in after first success
 
-Each needs real hardware. **Answering these is the first job of the macOS
-contributor**, ahead of writing much code:
+These are observations, not blockers. Write what you measured into this file:
 
-1. **Do tapped streams arrive attenuated?** There is an open Apple developer
-   thread on per-device attenuation and obtaining unattenuated app audio. If
-   levels are wrong, everything downstream is wrong.
-2. Does a tap survive Discord restarting, or must it be rebuilt?
-3. Behaviour when Discord is not running at tap-creation time.
-4. Does an aggregate device containing both tap and input actually give usable
-   drift compensation?
-5. Sample-rate negotiation when the aggregate disagrees with 48 kHz.
+1. Are tapped streams quieter than Discord's own output? If yes, by how much?
+2. Does `processRestoreEnabled` survive a Discord relaunch mid-session?
+3. Sample rate the aggregate actually ran at (expect 48 kHz or 44.1 kHz; the
+   session already resamples).

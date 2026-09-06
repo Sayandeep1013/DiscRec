@@ -128,14 +128,14 @@ Four parts. Only one is platform-specific.
 
 ```
 discord.rs      find Discord's ROOT pid (audio comes from a child;
-                INCLUDE_TARGET_PROCESS_TREE covers it)
+                INCLUDE_TARGET_PROCESS_TREE / descendant_pids covers it)
     |
 capture/        <-- capture is platform-specific
   windows.rs    WASAPI process loopback + default mic, two threads,
                 two independent device clocks
-  macos.rs      STUB. This is what a Mac contributor writes.
+  macos.rs      Core Audio process tap + default mic
     |
-session.rs      preview meters; on Record, mix + write. Enforces R8.
+session.rs      preview meters; on Record, mix + write
     |
 mixer.rs        Discord is timeline master; mic is resampled to match.
                 PI controller steered by buffer depth. Soft-knee limiter.
@@ -143,11 +143,12 @@ mixer.rs        Discord is timeline master; mic is resampled to match.
 writer.rs       Opus encode, Ogg pages straight to the OS (no BufWriter,
                 so a kill cannot lose buffered audio)
     |
-ui.rs           Win32 GDI window + tray. Windows-only this cut (ADR-0010).
+ui.rs           Win32 GDI window + tray
+macos_ui.rs     AppKit window (same product; compiled as `ui` on macOS)
 ```
 
-A `#[cfg]` anywhere outside `src/capture/` is a design smell. `ui.rs` is the
-known exception until a Mac shell exists.
+A `#[cfg]` anywhere outside `src/capture/` is a design smell. `ui.rs` /
+`macos_ui.rs`, `discord.rs`, `paths.rs`, and `main.rs` are the known exceptions.
 
 ---
 
@@ -196,13 +197,17 @@ because it would not.
 
 ### 5.4 macOS (Phase 4)
 
-Needs Mac hardware, which this machine does not have.
-[spec/capture-macos.md](spec/capture-macos.md) is written from Apple's docs and
-is **unverified**. [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md) is the current
-onboarding, but it is incomplete: it claims the window already opens on Mac,
-and it does not. `ui.rs` is Win32 (ADR-0010). `discord.rs::find` on macOS
-returns `None`. Do not send a contributor in until the Mac agent brief exists
-and those gaps are closed.
+Needs Mac hardware. The code, bundle, and playbook are in the repo.
+
+```bash
+git clone https://github.com/Sayandeep1013/DiscRec.git
+cd DiscRec
+bash scripts/macos/run.sh
+```
+
+That is the whole path. Details, permissions, and what not to rewrite:
+[CONTRIBUTING-macos.md](CONTRIBUTING-macos.md). GitHub Actions `macos-15`
+compiles it on every push.
 
 ---
 
