@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{define_class, msg_send, sel, DefinedClass, MainThreadMarker, MainThreadOnly, Message};
+use objc2::{define_class, msg_send, sel, MainThreadMarker, MainThreadOnly, Message};
 use objc2_app_kit::{
     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSBackingStoreType,
     NSBezelStyle, NSButton, NSColor, NSFont, NSLevelIndicator, NSLevelIndicatorStyle, NSMenu,
@@ -613,23 +613,25 @@ fn add_tray(app: &mut App) {
     }
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), ns_string!(""));
     let stop = unsafe {
-        NSMenuItem::initWithTitle_action_keyEquivalent(
+        let item = NSMenuItem::initWithTitle_action_keyEquivalent(
             NSMenuItem::alloc(mtm),
             ns_string!("Stop"),
             Some(sel!(trayStop:)),
             ns_string!(""),
-        )
+        );
+        item.setTarget(Some(app.delegate.as_ref()));
+        item
     };
-    stop.setTarget(Some(app.delegate.as_ref()));
     let folder = unsafe {
-        NSMenuItem::initWithTitle_action_keyEquivalent(
+        let item = NSMenuItem::initWithTitle_action_keyEquivalent(
             NSMenuItem::alloc(mtm),
             ns_string!("Show in folder"),
             Some(sel!(trayFolder:)),
             ns_string!(""),
-        )
+        );
+        item.setTarget(Some(app.delegate.as_ref()));
+        item
     };
-    folder.setTarget(Some(app.delegate.as_ref()));
     menu.addItem(&stop);
     menu.addItem(&folder);
     item.setMenu(Some(&menu));
