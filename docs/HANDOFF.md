@@ -47,8 +47,10 @@ and you get the old commands instead of the window.
 - 21 unit tests; `cargo clippy -- -D warnings` clean
 - → [ADR-0010](adr/0010-windows-native-shell.md)
 
-**Not done:** macOS. The 4-hour soak (R6) and a release CPU sample (R11) are
-still unrun measurements, not missing features.
+**Not done on this machine:** a hardware-proven macOS recording. The Mac code
+is in the tree; a Mac agent follows [AGENT-macos-e2e.md](AGENT-macos-e2e.md).
+The 4-hour soak (R6) and a release CPU sample (R11) are still unrun
+measurements, not missing features.
 
 ---
 
@@ -199,15 +201,19 @@ because it would not.
 
 Needs Mac hardware. The code, bundle, and playbook are in the repo.
 
+**If the session is an AI agent on a Mac:** stop reading this Windows
+handoff and execute [AGENT-macos-e2e.md](AGENT-macos-e2e.md).
+
+Human path:
+
 ```bash
 git clone https://github.com/Sayandeep1013/DiscRec.git
 cd DiscRec
 bash scripts/macos/run.sh
 ```
 
-That is the whole path. Details, permissions, and what not to rewrite:
-[CONTRIBUTING-macos.md](CONTRIBUTING-macos.md). GitHub Actions `macos-15`
-compiles it on every push.
+Details: [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md). GitHub Actions
+`macos-15` compiles it on every push.
 
 ---
 

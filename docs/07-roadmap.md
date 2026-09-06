@@ -70,7 +70,8 @@ Expect notarization to be most of it ([P3](05-challenges.md#p3)).
 
 **Cannot be finished without Mac hardware**, but the code is in the tree:
 `src/capture/macos.rs`, `src/macos_ui.rs`, `scripts/macos/run.sh`.
-Onboarding is [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md).
+Onboarding is [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md). A Mac AI
+agent should execute [AGENT-macos-e2e.md](AGENT-macos-e2e.md).
 
 **Exit:** `bash scripts/macos/run.sh` on macOS 14.2+ produces a valid recording
 with both sides, music playing on the Mac is absent, and a denied permission

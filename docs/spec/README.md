@@ -10,7 +10,7 @@ facts.
 |---|---|---|
 | [capture-interface.md](capture-interface.md) | The trait both backends implement, and the repo layout | Current |
 | [capture-windows.md](capture-windows.md) | WASAPI process loopback | Researched — documented API + vendor sample |
-| [capture-macos.md](capture-macos.md) | Core Audio process taps | Implemented; first hardware run still the Mac's job |
+| [capture-macos.md](capture-macos.md) | Core Audio process taps | Implemented; first hardware run is [AGENT-macos-e2e.md](../AGENT-macos-e2e.md) |
 
 ## Core — shared across both platforms
 

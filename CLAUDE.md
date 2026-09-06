@@ -1,9 +1,12 @@
 # Working notes for DiscRec
 
-**Starting a fresh session? Read `docs/HANDOFF.md` first** — current state,
-environment setup, how to run it, what to do next, and the traps that cost time.
-Then `docs/PROJECT-LOG.md` for why the decisions are what they are: the scope
-changed three times and several confident conclusions were wrong.
+**On a Mac?** Ignore the Windows GNU / `D:` toolchain in `HANDOFF.md`. Read
+`docs/AGENT-macos-e2e.md` and execute it end to end before changing code.
+
+**Starting a fresh session (Windows)?** Read `docs/HANDOFF.md` first — current
+state, environment setup, how to run it, what to do next, and the traps that
+cost time. Then `docs/PROJECT-LOG.md` for why the decisions are what they are:
+the scope changed three times and several confident conclusions were wrong.
 
 **What this is:** a small Windows/macOS app that captures Discord's audio when
 you press record. One binary, no background service, no bot, no configuration

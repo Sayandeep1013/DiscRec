@@ -137,7 +137,9 @@ pub fn run(args: Vec<String>) {
     #[cfg(not(windows))]
     {
         let _ = pid;
-        eprintln!("WAV capture is Windows-only. On macOS use:  cargo run --release -- 30 --mix");
+        eprintln!(
+            "WAV capture is Windows-only. On macOS use the signed app binary:\n  dist/DiscRec.app/Contents/MacOS/DiscRec 30 --mix"
+        );
         std::process::exit(1);
     }
 

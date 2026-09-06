@@ -4,7 +4,8 @@ Implements [capture-interface.md](capture-interface.md). Satisfies R1, R2, R3,
 R8. Target: macOS 14.2+, 14.4+ preferred.
 
 Implementation: `src/capture/macos.rs`. How to build and run:
-[CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md).
+[CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md). Mac agent jobs:
+[AGENT-macos-e2e.md](../AGENT-macos-e2e.md).
 
 > Written from Apple's documentation, AudioCap, cpal's aggregate-device
 > dictionary, and `objc2-core-audio` 0.3. First hardware proof is the Mac

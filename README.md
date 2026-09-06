@@ -71,7 +71,10 @@ Windows contributors on this machine's GNU toolchain: start at
 bash scripts/macos/run.sh
 ```
 
-Full playbook: [docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md).
+Human playbook: [docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md).
+If your Cursor/Claude session is on the Mac, point it at
+[docs/AGENT-macos-e2e.md](docs/AGENT-macos-e2e.md) and tell it to execute
+that file in order.
 
 ## How it's built
 
@@ -79,11 +82,12 @@ Rust. One repo. Capture is the only platform-specific part.
 
 ```
 src/discord.rs     find Discord's root process
-src/capture/       WASAPI process loopback (Windows) · Core Audio taps (macOS, stub)
+src/capture/       WASAPI process loopback (Windows) · Core Audio process tap (macOS)
 src/session.rs     preview meters; mix + write on Record
 src/mixer.rs       Discord is the timeline; the mic is resampled to match
 src/writer.rs      Opus in Ogg, pages committed as they are made
-src/ui.rs          Win32 window + tray (Windows only for now)
+src/ui.rs          Win32 window + tray
+src/macos_ui.rs    AppKit window (same product; compiled as `ui` on macOS)
 ```
 
 Picking this up cold? [docs/HANDOFF.md](docs/HANDOFF.md) is the operational
@@ -96,6 +100,7 @@ are what they are.
 | [docs/03-architecture.md](docs/03-architecture.md) | How it works |
 | [docs/07-roadmap.md](docs/07-roadmap.md) | What to build, in order |
 | [docs/CONTRIBUTING-macos.md](docs/CONTRIBUTING-macos.md) | Setting up the Mac side |
+| [docs/AGENT-macos-e2e.md](docs/AGENT-macos-e2e.md) | Mac agent: build, sign, prove a recording |
 
 ## Status
 

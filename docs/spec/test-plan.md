@@ -69,4 +69,5 @@ hesitate, the UI is wrong, not the tester.
 Everything macOS. There is no Mac on the primary development machine, so
 [capture-macos.md](capture-macos.md) is unverified and its tests unrun. Tracked
 in [../08-toolchain-and-gaps.md](../08-toolchain-and-gaps.md) rather than hidden
-here. → [../CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md)
+here. A Mac agent runs [../AGENT-macos-e2e.md](../AGENT-macos-e2e.md).
+→ [../CONTRIBUTING-macos.md](../CONTRIBUTING-macos.md)

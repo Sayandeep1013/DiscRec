@@ -1,5 +1,8 @@
 # Building DiscRec on a Mac
 
+**If you are an AI agent:** read [AGENT-macos-e2e.md](AGENT-macos-e2e.md) and
+execute those jobs in order. This page is the human version of the same facts.
+
 This is the Mac counterpart of the Windows app. The capture backend, Discord
 process finder, AppKit window, bundle, and signing steps are **already in this
 repository**. You are not being asked to design them.
