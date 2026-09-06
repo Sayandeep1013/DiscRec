@@ -6,6 +6,11 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 fn main() {
+    // Must run before any HWND, or Windows bitmap-scales the whole process
+    // (blurry window, blurry folder picker, blurry Explorer launched from us).
+    #[cfg(windows)]
+    discrec::ui::enable_dpi_awareness();
+
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
         #[cfg(windows)]

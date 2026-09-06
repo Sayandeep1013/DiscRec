@@ -15,9 +15,6 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-/// Discord (or the targeted process) must produce audible signal within this
-/// window after Record, or the file is discarded (R8 / P2).
-pub const SIGNAL_WINDOW: Duration = Duration::from_secs(3);
 const SIGNAL_FLOOR: f32 = 1.0e-6;
 const MIX_RATE: u32 = 48_000;
 
@@ -105,7 +102,6 @@ pub enum Event {
     Previewing,
     Recording,
     Saved { path: PathBuf },
-    NoSignal,
     Failed(String),
 }
 
@@ -166,9 +162,6 @@ struct WriteJob {
     path: PathBuf,
     mixer: Mixer,
     started: Instant,
-    discord_peak: f32,
-    discord_packets: u64,
-    has_signal: bool,
 }
 
 fn engine_thread(pid: u32, cmd: Receiver<Command>, ev: Sender<Event>, meters: Arc<Meters>) {
@@ -193,16 +186,9 @@ fn engine_thread(pid: u32, cmd: Receiver<Command>, ev: Sender<Event>, meters: Ar
                     Source::Microphone => meters.set_mic(peak),
                 }
                 if let Some(j) = job.as_mut() {
-                    if let Err(e) = feed_writer(j, &frame, fmt, peak) {
+                    if let Err(e) = feed_writer(j, &frame, fmt) {
                         let _ = ev.send(Event::Failed(e));
                         discard_job(job.take());
-                    } else if !j.has_signal
-                        && j.started.elapsed() >= SIGNAL_WINDOW
-                        && is_dead_air(j.discord_peak, j.discord_packets)
-                    {
-                        discard_job(job.take());
-                        meters.set_elapsed_ms(0);
-                        let _ = ev.send(Event::NoSignal);
                     } else {
                         meters.set_elapsed_ms(j.started.elapsed().as_millis() as u64);
                     }
@@ -223,9 +209,6 @@ fn engine_thread(pid: u32, cmd: Receiver<Command>, ev: Sender<Event>, meters: Ar
                                 path,
                                 mixer: Mixer::new(fmt.channels),
                                 started: Instant::now(),
-                                discord_peak: 0.0,
-                                discord_packets: 0,
-                                has_signal: false,
                             });
                             meters.set_elapsed_ms(0);
                             let _ = ev.send(Event::Recording);
@@ -257,12 +240,7 @@ fn engine_thread(pid: u32, cmd: Receiver<Command>, ev: Sender<Event>, meters: Ar
     let _ = backend.stop();
 }
 
-fn feed_writer(
-    job: &mut WriteJob,
-    frame: &Frame,
-    fmt: StreamFormat,
-    peak: f32,
-) -> Result<(), String> {
+fn feed_writer(job: &mut WriteJob, frame: &Frame, fmt: StreamFormat) -> Result<(), String> {
     let converted = to_mix_format(&frame.samples, frame.channels, frame.sample_rate);
     match frame.source {
         Source::Microphone => {
@@ -270,11 +248,6 @@ fn feed_writer(
             Ok(())
         }
         Source::DiscordOutput => {
-            job.discord_packets += 1;
-            job.discord_peak = job.discord_peak.max(peak);
-            if peak >= SIGNAL_FLOOR {
-                job.has_signal = true;
-            }
             let mixed = job.mixer.mix(&converted_or_pad(&converted, fmt));
             job.writer
                 .write(&mixed)
@@ -292,11 +265,6 @@ fn converted_or_pad(samples: &[f32], fmt: StreamFormat) -> Vec<f32> {
 }
 
 fn finish_job(job: WriteJob, ev: &Sender<Event>) -> Option<PathBuf> {
-    if !job.has_signal && is_dead_air(job.discord_peak, job.discord_packets) {
-        discard_job(Some(job));
-        let _ = ev.send(Event::NoSignal);
-        return None;
-    }
     let path = job.path.clone();
     if let Err(e) = job.writer.finalize() {
         let _ = ev.send(Event::Failed(format!("Could not finalize: {e}")));
@@ -352,8 +320,6 @@ pub fn record_mixed(
     let mut next_sample = Duration::from_secs(30);
     let mut discord_peak = 0.0f32;
     let mut mic_peak = 0.0f32;
-    let mut discord_packets = 0u64;
-    let mut has_signal = false;
     let started = Instant::now();
     let mut failed: Option<CaptureError> = None;
 
@@ -367,11 +333,7 @@ pub fn record_mixed(
                     mixer.push_mic(&converted);
                 }
                 Source::DiscordOutput => {
-                    discord_packets += 1;
                     discord_peak = discord_peak.max(peak);
-                    if peak >= SIGNAL_FLOOR {
-                        has_signal = true;
-                    }
                     let mixed = mixer.mix(&converted);
                     if let Err(e) = writer.write(&mixed) {
                         failed = Some(CaptureError::Platform(format!("write: {e}")));
@@ -403,14 +365,6 @@ pub fn record_mixed(
                 }
             }
         }
-
-        if started.elapsed() >= SIGNAL_WINDOW
-            && !has_signal
-            && is_dead_air(discord_peak, discord_packets)
-        {
-            failed = Some(CaptureError::NoSignal);
-            break;
-        }
     }
 
     let _ = backend.stop();
@@ -419,12 +373,6 @@ pub fn record_mixed(
         drop(writer);
         let _ = std::fs::remove_file(output);
         return Err(err);
-    }
-
-    if !has_signal && is_dead_air(discord_peak, discord_packets) {
-        drop(writer);
-        let _ = std::fs::remove_file(output);
-        return Err(CaptureError::NoSignal);
     }
 
     writer

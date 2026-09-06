@@ -15,7 +15,17 @@ pub const WARN_FREE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const _: () = assert!(REFUSE_FREE_BYTES < WARN_FREE_BYTES);
 
 pub fn recordings_dir() -> PathBuf {
-    documents_dir().join("DiscRec")
+    load_storage_dir().unwrap_or_else(default_recordings_dir)
+}
+
+pub fn default_recordings_dir() -> PathBuf {
+    downloads_dir().join("DiscRec")
+}
+
+pub fn set_recordings_dir(path: PathBuf) -> io::Result<PathBuf> {
+    fs::create_dir_all(&path)?;
+    save_storage_dir(&path)?;
+    Ok(path)
 }
 
 pub fn config_dir() -> PathBuf {
@@ -68,9 +78,9 @@ pub enum DiskStatus {
     Refuse,
 }
 
-fn documents_dir() -> PathBuf {
+fn downloads_dir() -> PathBuf {
     if let Ok(p) = std::env::var("USERPROFILE") {
-        return PathBuf::from(p).join("Documents");
+        return PathBuf::from(p).join("Downloads");
     }
     PathBuf::from(".")
 }
@@ -80,6 +90,34 @@ fn appdata_dir() -> PathBuf {
         return PathBuf::from(p);
     }
     PathBuf::from(".")
+}
+
+fn config_file() -> PathBuf {
+    config_dir().join("config.toml")
+}
+
+fn load_storage_dir() -> Option<PathBuf> {
+    let text = fs::read_to_string(config_file()).ok()?;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let rest = line.strip_prefix("storage_dir")?.trim();
+        let rest = rest.strip_prefix('=')?.trim();
+        let unquoted = rest.trim_matches('"').trim_matches('\'');
+        if unquoted.is_empty() {
+            return None;
+        }
+        return Some(PathBuf::from(unquoted));
+    }
+    None
+}
+
+fn save_storage_dir(path: &Path) -> io::Result<()> {
+    fs::create_dir_all(config_dir())?;
+    let escaped = path.to_string_lossy().replace('\\', "/");
+    fs::write(config_file(), format!("storage_dir = \"{escaped}\"\n"))
 }
 
 fn timestamp_stamp() -> String {
@@ -133,8 +171,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recordings_dir_ends_with_discrec() {
-        let dir = recordings_dir();
+    fn recordings_dir_defaults_to_downloads() {
+        let dir = default_recordings_dir();
         assert_eq!(dir.file_name().unwrap(), "DiscRec");
+        assert_eq!(
+            dir.parent().and_then(|p| p.file_name()).unwrap(),
+            "Downloads"
+        );
+    }
+
+    #[test]
+    fn storage_dir_round_trip_parses() {
+        let sample = "storage_dir = \"C:/Users/me/Downloads/DiscRec\"\n";
+        let mut found = None;
+        for line in sample.lines() {
+            let rest = line.trim().strip_prefix("storage_dir").unwrap();
+            let rest = rest.trim().strip_prefix('=').unwrap().trim();
+            found = Some(rest.trim_matches('"'));
+        }
+        assert_eq!(found, Some("C:/Users/me/Downloads/DiscRec"));
     }
 }

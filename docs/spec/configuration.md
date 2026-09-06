@@ -7,7 +7,7 @@ and every setting is a decision pushed onto someone who wanted to press record.
 
 | Behaviour | Default | Why not configurable |
 |---|---|---|
-| Recording location | `Documents/DiscRec/` | Changeable via the one setting below |
+| Recording location | `Downloads/DiscRec/` | Changeable from the app; stored in config.toml |
 | Format | Ogg/Opus 48 kHz stereo ~96 kbps | A format picker is a question nobody benefits from answering |
 | Discord instance | Auto — stable, Canary or PTB, whichever has audio | Detected reliably |
 | Microphone | System default input | Follows the device the user already chose in the OS |
@@ -17,7 +17,7 @@ and every setting is a decision pushed onto someone who wanted to press record.
 
 ```toml
 [general]
-storage_dir   = "..."     # default: Documents/DiscRec
+storage_dir   = "..."     # default: Downloads/DiscRec
 include_mic   = true      # false records Discord's side only
 
 [audio]

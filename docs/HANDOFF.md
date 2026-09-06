@@ -17,7 +17,7 @@ Two documents matter and they do different jobs:
 A Windows app you can use. Open the binary, press Record, stop when you are
 done. It finds Discord, captures Discord's audio and your microphone, mixes
 them with clock-drift correction, and writes one Ogg/Opus file to
-`Documents\DiscRec\`.
+`Downloads\DiscRec\` by default.
 
 The CLI harness is still there for soaks and crash tests: pass any argument
 and you get the old commands instead of the window.
@@ -33,14 +33,17 @@ and you get the old commands instead of the window.
 | Drift correction holds | Buffer 4796–4814 against 4800 target over 12 min, zero underruns/clamps |
 | Survives being killed | 25/25 kill cycles produced decodable files (R7) |
 | Opus output | Decodes clean under `ffmpeg -f null`. 0.38 MB vs 16.5 MB WAV |
-| Footprint (engine) | 24 MB resident, 0.68 MB release binary |
+| Footprint (engine) | 24 MB resident; release binary ~0.74 MB |
 
-**Added this session (session 2):**
+**Added this session (session 2) and follow-up:**
 
 - Native Win32 window: Record / Stop, live meters, first-run notice, recordings folder
+- Per-monitor DPI awareness so the window, folder picker, and Explorer stay sharp
 - Tray icon while recording (Stop / Show in folder)
-- Silent Discord capture after Record deletes the file and shows Retry (R8)
-- Output path `Documents\DiscRec\DiscRec-YYYY-MM-DD-HHMMSS.ogg`
+- Quiet Discord is allowed — a silent call is still a recording. Wrong PID / denied
+  permission must still fail rather than write digital silence (R8)
+- Output path `Downloads\DiscRec\DiscRec-YYYY-MM-DD-HHMMSS.ogg` (changeable in the app);
+  Open folder always opens the configured save directory, not the last file
 - 21 unit tests; `cargo clippy -- -D warnings` clean
 - → [ADR-0010](adr/0010-windows-native-shell.md)
 
@@ -156,7 +159,8 @@ known exception until a Mac shell exists.
 cargo run --release
 ```
 
-Start Discord, join a call, press Record. Files land in `Documents\DiscRec\`.
+Start Discord, join a call, press Record. Files land in `Downloads\DiscRec\`
+by default; Change folder if you want them elsewhere.
 First launch shows the recording notice once.
 
 ### 5.2 Finish Phase 2 — the 4-hour soak (R6)
@@ -194,10 +198,11 @@ because it would not.
 
 Needs Mac hardware, which this machine does not have.
 [spec/capture-macos.md](spec/capture-macos.md) is written from Apple's docs and
-is **unverified**. Point a contributor at
-[CONTRIBUTING-macos.md](CONTRIBUTING-macos.md); their first job is answering
-five open questions, not writing code. They will also need a windowing backend
-— the current `ui.rs` is Win32 (ADR-0010).
+is **unverified**. [CONTRIBUTING-macos.md](CONTRIBUTING-macos.md) is the current
+onboarding, but it is incomplete: it claims the window already opens on Mac,
+and it does not. `ui.rs` is Win32 (ADR-0010). `discord.rs::find` on macOS
+returns `None`. Do not send a contributor in until the Mac agent brief exists
+and those gaps are closed.
 
 ---
 
