@@ -1,11 +1,16 @@
 ﻿[package]
 name = "discrec"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Records Discord's audio. Press record."
 license = "MIT"
 repository = "https://github.com/Sayandeep1013/DiscRec"
+readme = "README.md"
+keywords = ["discord", "audio", "recorder", "opus", "loopback"]
+categories = ["multimedia::audio", "command-line-utilities"]
+# Ship only what the build needs; docs, scripts and test captures stay in the repo
+include = ["/src/**/*.rs", "/assets/app.ico", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
 
 [dependencies]
 # WAV output, retained for diagnostics and test fixtures. Pure Rust.

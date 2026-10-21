@@ -51,6 +51,17 @@ Terms require you to tell them; the app cannot say it for you.
 
 Windows 10 (build 20348+) or Windows 11. No installer, no extra runtime.
 
+## Install with Cargo
+
+If you already have Rust, CMake and a C compiler (the Opus encoder is built
+from C source):
+
+```sh
+cargo install discrec
+```
+
+Most people should use the exe above instead.
+
 ## Building
 
 ```bash
