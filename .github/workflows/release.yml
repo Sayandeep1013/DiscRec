@@ -1,0 +1,33 @@
+name: Windows release
+
+# Tag v* -> build discrec.exe and attach it to a draft GitHub Release.
+# Review the draft, write the notes, then publish it.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Build discrec.exe
+    runs-on: windows-latest
+    env:
+      # Static CRT so the exe needs no Visual C++ runtime installed
+      RUSTFLAGS: -C target-feature=+crt-static
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Toolchain
+        run: rustc -V && cargo -V
+      - name: Test
+        run: cargo test
+      - name: Build
+        run: cargo build --release
+      - name: Attach to draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: target/release/discrec.exe
