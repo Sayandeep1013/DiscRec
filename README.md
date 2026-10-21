@@ -1,5 +1,8 @@
 # DiscRec
 
+[![crates.io](https://img.shields.io/crates/v/discrec.svg)](https://crates.io/crates/discrec)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A small native app that records your Discord calls. Open it, press record, it
 finds Discord and captures the call. Press stop, you get one file.
 
