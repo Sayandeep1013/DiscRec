@@ -80,6 +80,17 @@ own directory*, not via PATH — so having MinGW on PATH does not help. A
 `dlltool` being broken; an earlier revision of ADR-0009 claimed that and was
 wrong. → [adr/0009](adr/0009-gnu-toolchain-no-visual-studio.md)
 
+### If linking fails with `cannot find crtend.o` / `-lkernel32`
+
+The user PATH lists rustup's `...\bin\self-contained` folder before
+`D:\mingw64\bin`. That folder's `x86_64-w64-mingw32-gcc.exe` is a stub (see
+its `GCC-WARNING.txt`), so any crate with a build script fails to link. Put
+MinGW first for the build (verified 2026-10-22):
+
+```powershell
+$env:Path = 'D:\mingw64\bin;' + $env:Path; cargo build --release
+```
+
 ### Why GNU and not MSVC
 
 The Windows SDK cannot be kept off `C:`. The `windows` crate generates bindings

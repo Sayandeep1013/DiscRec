@@ -1,10 +1,20 @@
-# DiscRec
+<p align="center">
+  <img src="assets/icon.png" width="128" alt="DiscRec logo">
+</p>
 
-[![crates.io](https://img.shields.io/crates/v/discrec.svg)](https://crates.io/crates/discrec)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<h1 align="center">DiscRec</h1>
+
+<p align="center">
+  <a href="https://crates.io/crates/discrec"><img src="https://img.shields.io/crates/v/discrec.svg" alt="crates.io"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
 
 A small native app that records your Discord calls. Open it, press record, it
 finds Discord and captures the call. Press stop, you get one file.
+
+<p align="center">
+  <img src="docs/images/screenshot.png" width="380" alt="DiscRec recording a call: Discord and microphone meters, stop button, 00:30 elapsed">
+</p>
 
 Not a background service. Not a bot. Not a scene collection.
 
@@ -53,6 +63,16 @@ Terms require you to tell them; the app cannot say it for you.
 → [docs/06-legal-and-consent.md](docs/06-legal-and-consent.md)
 
 Windows 10 (build 20348+) or Windows 11. No installer, no extra runtime.
+
+**Optional: add it to the Start menu** so searching "DiscRec" in Windows opens
+it. From a clone of this repo (no admin rights needed):
+
+```powershell
+.\scripts\install-windows.ps1 -Exe $HOME\Downloads\discrec.exe   # or omit -Exe after cargo build --release
+```
+
+It copies the exe to `%LOCALAPPDATA%\Programs\DiscRec` (or `-InstallDir <folder>`)
+and adds a Start menu shortcut. Re-run it to update; `-Uninstall` removes both.
 
 ## Install with Cargo
 

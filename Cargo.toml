@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["discord", "audio", "recorder", "opus", "loopback"]
 categories = ["multimedia::audio", "command-line-utilities"]
 # Ship only what the build needs; docs, scripts and test captures stay in the repo
-include = ["/src/**/*.rs", "/assets/app.ico", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
+include = ["/src/**/*.rs", "/build.rs", "/assets/app.ico", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE"]
 
 [dependencies]
 # WAV output, retained for diagnostics and test fixtures. Pure Rust.
@@ -22,6 +22,10 @@ hound = "3.5"
 # installed for ADR-0009.
 opus = "0.4"
 ogg = "0.9"
+
+[build-dependencies]
+# Embeds assets/app.ico into the exe (see build.rs). Uses windres on GNU, rc.exe on MSVC.
+winresource = "0.1"
 
 [target.'cfg(windows)'.dependencies]
 # Bindings generated from Windows metadata, not SDK headers — this is what
