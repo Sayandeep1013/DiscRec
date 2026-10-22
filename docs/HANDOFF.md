@@ -84,8 +84,10 @@ wrong. → [adr/0009](adr/0009-gnu-toolchain-no-visual-studio.md)
 
 The user PATH lists rustup's `...\bin\self-contained` folder before
 `D:\mingw64\bin`. That folder's `x86_64-w64-mingw32-gcc.exe` is a stub (see
-its `GCC-WARNING.txt`), so any crate with a build script fails to link. Put
-MinGW first for the build (verified 2026-10-22):
+its `GCC-WARNING.txt`), so any crate with a build script fails to link.
+Fixed on 2026-10-22 by moving `D:\mingw64\bin` ahead of it in the user PATH
+(backup: `G:\Backups\user-PATH-2026-10-22.txt`). If an installer or rustup
+re-adds the folder in front, fix the order again, or for one build:
 
 ```powershell
 $env:Path = 'D:\mingw64\bin;' + $env:Path; cargo build --release
